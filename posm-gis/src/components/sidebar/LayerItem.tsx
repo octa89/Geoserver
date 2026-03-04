@@ -1,13 +1,11 @@
 import { useCallback } from 'react';
 import type { RefObject } from 'react';
-import type L from 'leaflet';
+import L from 'leaflet';
 import 'leaflet.markercluster';
 import { useStore } from '../../store';
 import { getLayerRefs, setLayerRefs } from '../../store/leafletRegistry';
-import { createPointMarker } from '../../lib/markers';
 import { darkenColor } from '../../lib/colorUtils';
-import { defaultStyle } from '../../lib/symbology';
-import { applyLabels, removeLabels, computeLabelMinZoom, updateLabelVisibility, reconcileViewport } from '../../lib/labels';
+import { applyLabels, removeLabels, computeLabelMinZoom, updateLabelVisibility } from '../../lib/labels';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,7 +101,6 @@ export function LayerItem({ name, mapRef }: LayerItemProps) {
     visible,
     color,
     geomType,
-    pointSymbol,
     clustered,
     labelField,
     fields,
@@ -167,7 +164,7 @@ export function LayerItem({ name, mapRef }: LayerItemProps) {
     const refs = getLayerRefs(name);
     if (!refs) return;
 
-    const { leafletLayer, geojson } = refs;
+    const { leafletLayer } = refs;
     const willCluster = !clustered;
 
     // Remove whatever is currently on the map
@@ -242,8 +239,6 @@ export function LayerItem({ name, mapRef }: LayerItemProps) {
   // ---- Render ----------------------------------------------------------------
 
   const darker = darkenColor(color);
-  const isLine = geomType === 'LineString' || geomType === 'MultiLineString';
-
   return (
     <div
       className="layer-item"

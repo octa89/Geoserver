@@ -78,12 +78,6 @@ const blankUser = (): Omit<AppUser, 'username'> & { username: string; password: 
   role: 'user',
 });
 
-const blankGroup = (): AppGroup => ({
-  id: '',
-  label: '',
-  workspaces: [],
-});
-
 // ================================================================
 // USERS SECTION
 // ================================================================

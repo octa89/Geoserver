@@ -1,6 +1,6 @@
 import type { FeatureCollection } from 'geojson';
 
-const GEOSERVER_BASE = '/api/geoserver';
+const GEOSERVER_BASE = import.meta.env.VITE_GEOSERVER_BASE || '/api/geoserver';
 
 // GeoServer REST admin credentials (needed for /rest/ endpoints)
 const GS_ADMIN_USER = import.meta.env.VITE_GS_ADMIN_USER || 'admin';

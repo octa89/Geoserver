@@ -44,13 +44,12 @@ export function defaultStyle(
 
   if (geomType === 'Point' || geomType === 'MultiPoint') {
     return {
-      radius: 6,
       fillColor: color,
       color: darker,
       weight: 1.5,
       fillOpacity: 0.7,
       opacity: 1,
-    };
+    } as L.PathOptions;
   }
 
   if (
@@ -470,7 +469,7 @@ interface RulesOpts {
  */
 export function applyRules(
   leafletLayer: L.GeoJSON,
-  geojson: GeoJSON.FeatureCollection,
+  _geojson: GeoJSON.FeatureCollection,
   geomType: GeomType,
   pointSymbol: string,
   opts: RulesOpts
