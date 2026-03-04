@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSM GIS - Shared Map</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <!-- App CSS (reuse existing styles) -->
+    <link rel="stylesheet" href="/css/styles.css" />
+
+    <style>
+        body { margin: 0; overflow: hidden; }
+        #map { position: fixed; inset: 0; z-index: 0; }
+
+        #share-bar {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+            background: rgba(26, 26, 46, 0.92);
+            backdrop-filter: blur(6px);
+            color: #ccc; padding: 10px 20px;
+            display: flex; align-items: center; gap: 14px;
+            font-size: 13px; font-family: 'Segoe UI', sans-serif;
+            border-bottom: 1px solid rgba(66, 212, 244, 0.15);
+        }
+        .share-title {
+            font-weight: 700; color: #42d4f4; font-size: 15px;
+        }
+        .share-badge {
+            background: rgba(15, 52, 96, 0.8);
+            border: 1px solid rgba(66, 212, 244, 0.4);
+            color: #42d4f4;
+            border-radius: 4px; padding: 3px 10px;
+            font-size: 10px; font-weight: 600; letter-spacing: 0.5px;
+        }
+        .share-ws-label {
+            color: #888; font-size: 12px; margin-left: auto;
+        }
+
+        /* Push Leaflet layer control below the top bar */
+        .leaflet-top.leaflet-right {
+            top: 48px !important;
+        }
+        /* Push zoom controls down too */
+        .leaflet-bottom.leaflet-right {
+            bottom: 10px !important;
+            right: 10px !important;
+        }
+
+        #share-legend {
+            position: fixed; bottom: 12px; left: 12px; z-index: 1000;
+            background: rgba(26, 26, 46, 0.92);
+            backdrop-filter: blur(6px);
+            padding: 14px 16px; border-radius: 8px;
+            max-width: 360px; max-height: 70vh; overflow-y: auto;
+            border: 1px solid rgba(66, 212, 244, 0.15);
+        }
+        #share-legend:empty, #share-legend .status-text { display: none; }
+        .share-legend-section {
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .share-legend-section:last-child {
+            margin-bottom: 0;
+            padding-bottom: 0;
+            border-bottom: none;
+        }
+        .share-legend-title {
+            color: #42d4f4; font-size: 11px; font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        #share-loading {
+            position: fixed; top: 50%; left: 50%; z-index: 2000;
+            transform: translate(-50%, -50%);
+            background: rgba(26, 26, 46, 0.95);
+            color: #42d4f4; padding: 20px 36px;
+            border-radius: 8px; font-size: 14px;
+            border: 1px solid rgba(66, 212, 244, 0.3);
+            font-family: 'Segoe UI', sans-serif;
+        }
+
+        #share-error {
+            position: fixed; top: 50%; left: 50%; z-index: 2000;
+            transform: translate(-50%, -50%);
+            background: rgba(26, 26, 46, 0.95);
+            color: #e94560; padding: 24px 40px;
+            border-radius: 8px; font-size: 14px;
+            border: 1px solid rgba(233, 69, 96, 0.3);
+            font-family: 'Segoe UI', sans-serif;
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="share-bar">
+        <span class="share-title">POSM GIS</span>
+        <span class="share-badge">SHARED VIEW</span>
+        <span id="share-ws-label" class="share-ws-label"></span>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="share-legend">
+        <div id="legend-content"></div>
+    </div>
+
+    <div id="share-loading">Loading shared map...</div>
+    <div id="share-error"></div>
+
+    <!-- Leaflet + plugins -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
+
+    <!-- POSM core modules (same load order, minus editing UI and app.js) -->
+    <script src="/js/auth.js"></script>
+    <script src="/js/config.js"></script>
+    <script src="/js/map.js"></script>
+    <script src="/js/markers.js"></script>
+    <script src="/js/arrows.js"></script>
+    <script src="/js/layers.js"></script>
+    <script src="/js/labels.js"></script>
+    <script src="/js/session.js"></script>
+    <script src="/js/symbology-classify.js"></script>
+    <script src="/js/symbology-legend.js"></script>
+    <script src="/js/symbology.js"></script>
+    <script src="/js/symbology-graduated.js"></script>
+    <script src="/js/symbology-proportional.js"></script>
+    <script src="/js/symbology-rules.js"></script>
+
+    <!-- Viewer script (replaces app.js) -->
+    <script src="/js/share-viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSM GIS - Admin Panel</title>
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body class="admin-page">
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1>POSM GIS Admin</h1>
+            <div class="admin-nav">
+                <a href="index.html" class="admin-link">Back to Login</a>
+            </div>
+        </div>
+
+        <div class="admin-grid">
+            <!-- GROUPS PANEL -->
+            <div class="admin-panel">
+                <div class="admin-panel-header">
+                    <h2>Groups</h2>
+                </div>
+                <div class="admin-panel-body">
+                    <table class="admin-table" id="groups-table">
+                        <thead>
+                            <tr>
+                                <th>Group ID</th>
+                                <th>Label</th>
+                                <th>Workspaces</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="groups-tbody"></tbody>
+                    </table>
+                    <div class="admin-form" id="group-form">
+                        <h3>Add Group</h3>
+                        <input type="text" id="group-id-input" placeholder="Group ID (e.g. my_group)" class="admin-input" />
+                        <input type="text" id="group-label-input" placeholder="Label (e.g. My Group)" class="admin-input" />
+                        <label class="admin-label">Workspaces</label>
+                        <div id="group-ws-checkboxes" class="admin-checkbox-grid"></div>
+                        <button id="add-group-btn" class="admin-btn">Add Group</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- USERS PANEL -->
+            <div class="admin-panel">
+                <div class="admin-panel-header">
+                    <h2>Users</h2>
+                </div>
+                <div class="admin-panel-body">
+                    <table class="admin-table" id="users-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Display Name</th>
+                                <th>Groups</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-tbody"></tbody>
+                    </table>
+                    <div class="admin-form" id="user-form">
+                        <h3>Add User</h3>
+                        <input type="text" id="user-username-input" placeholder="Username" class="admin-input" />
+                        <input type="text" id="user-display-input" placeholder="Display Name" class="admin-input" />
+                        <label class="admin-label">Groups</label>
+                        <div id="user-group-checkboxes" class="admin-checkbox-grid"></div>
+                        <button id="add-user-btn" class="admin-btn">Add User</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Available workspaces info -->
+        <div class="admin-panel" style="margin-top:20px;">
+            <div class="admin-panel-header">
+                <h2>Available GeoServer Workspaces</h2>
+            </div>
+            <div class="admin-panel-body">
+                <div id="ws-list" class="status-text">Discovering workspaces...</div>
+            </div>
+        </div>
+
+        <div class="admin-footer">
+            <button id="reset-defaults-btn" class="admin-btn admin-btn-danger">Reset to Default Data</button>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

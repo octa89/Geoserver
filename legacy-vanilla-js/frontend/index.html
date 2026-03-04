@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSM GIS - Sign In</title>
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body class="login-page">
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>POSM GIS</h1>
+                <p>Geographic Information System Viewer</p>
+            </div>
+            <form id="login-form" class="login-form">
+                <label for="user-select">Select User</label>
+                <select id="user-select" class="login-select" required>
+                    <option value="">Choose a user...</option>
+                </select>
+                <button type="submit" class="login-btn" id="login-btn" disabled>Sign In</button>
+            </form>
+            <div class="login-footer">
+                <a href="admin.html">Manage Users &amp; Groups</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script>
+    (function() {
+        'use strict';
+
+        // If already logged in, go straight to map
+        if (POSM.getCurrentUser()) {
+            window.location.href = 'map.html';
+            return;
+        }
+
+        // Populate user dropdown
+        var select = document.getElementById('user-select');
+        var btn = document.getElementById('login-btn');
+        var users = POSM.getUsers();
+
+        users.forEach(function(u) {
+            var opt = document.createElement('option');
+            opt.value = u.username;
+            opt.textContent = u.displayName + ' (' + u.username + ')';
+            select.appendChild(opt);
+        });
+
+        select.addEventListener('change', function() {
+            btn.disabled = !this.value;
+        });
+
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var username = select.value;
+            if (!username) return;
+            if (POSM.login(username)) {
+                window.location.href = 'map.html';
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

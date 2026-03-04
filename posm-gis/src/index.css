@@ -1,0 +1,6 @@
+/* Reset - minimal, App.css handles the rest */
+:root {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}

@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POSM GIS - Map Viewer</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+    <!-- App CSS -->
+    <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+    <div id="map"></div>
+
+    <div id="sidebar">
+        <div class="sidebar-header">
+            <span class="sidebar-title">POSM GIS Viewer</span>
+            <div class="sidebar-user-area">
+                <span id="user-display" class="user-display"></span>
+                <button id="share-btn" class="share-btn" title="Share this map view">&#128279;</button>
+                <button id="logout-btn" class="logout-btn" title="Logout">&#x2192;</button>
+            </div>
+        </div>
+        <div id="ws-bar" class="ws-bar" style="display:none;">
+            <span class="ws-bar-label">Workspace:</span>
+            <span id="ws-bar-name" class="ws-bar-name">--</span>
+            <button id="ws-bar-switch" class="ws-bar-btn" title="Switch workspace">Switch</button>
+        </div>
+        <div class="sidebar-scroll">
+            <!-- Basemaps -->
+            <div class="sidebar-section">
+                <h4>Basemap</h4>
+                <div class="basemap-group">
+                    <button class="basemap-btn active" data-basemap="street">Street</button>
+                    <button class="basemap-btn" data-basemap="satellite">Satellite</button>
+                    <button class="basemap-btn" data-basemap="dark">Dark</button>
+                </div>
+            </div>
+
+            <!-- Layers -->
+            <div class="sidebar-section">
+                <div class="section-header-row">
+                    <h4>Layers</h4>
+                    <button id="filter-toggle" class="filter-toggle-btn" title="Search & Filter">&#9906; Filter</button>
+                </div>
+                <div class="layer-search-wrap">
+                    <input type="text" id="layer-search" class="layer-search-input" placeholder="Search layers..." />
+                    <span id="layer-search-count" class="layer-search-count"></span>
+                    <button id="layer-search-clear" class="layer-search-clear" style="display:none;" title="Clear search">&times;</button>
+                </div>
+                <div id="layer-list">
+                    <div class="status-text">Loading layers from GeoServer...</div>
+                </div>
+            </div>
+
+            <!-- Symbology -->
+            <div class="sidebar-section">
+                <h4>Symbology</h4>
+                <select id="sym-layer" class="sym-select">
+                    <option value="">Select a layer...</option>
+                </select>
+
+                <!-- Mode Grid 2x2 (hidden until layer selected) -->
+                <div id="sym-mode-grid" class="sym-mode-grid" style="display:none;">
+                    <div class="sym-mode-cell active" data-mode="unique">
+                        <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="6" cy="6" r="4" fill="#e6194b"/><circle cx="18" cy="6" r="4" fill="#3cb44b"/><circle cx="6" cy="18" r="4" fill="#4363d8"/><circle cx="18" cy="18" r="4" fill="#f58231"/></svg>
+                        <span class="sym-mode-label">Unique Values</span>
+                        <span class="sym-mode-sub">One color per value</span>
+                    </div>
+                    <div class="sym-mode-cell" data-mode="graduated">
+                        <svg width="24" height="24" viewBox="0 0 24 24"><rect x="1" y="16" width="5" height="7" rx="1" fill="#deebf7"/><rect x="7" y="11" width="5" height="12" rx="1" fill="#9ecae1"/><rect x="13" y="6" width="5" height="17" rx="1" fill="#4292c6"/><rect x="19" y="1" width="5" height="22" rx="1" fill="#084594"/></svg>
+                        <span class="sym-mode-label">Graduated</span>
+                        <span class="sym-mode-sub">Color ramp by value</span>
+                    </div>
+                    <div class="sym-mode-cell" data-mode="proportional">
+                        <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="5" cy="19" r="3" fill="#3388ff" opacity="0.7"/><circle cx="12" cy="14" r="5" fill="#3388ff" opacity="0.7"/><circle cx="19" cy="8" r="8" fill="#3388ff" opacity="0.7"/></svg>
+                        <span class="sym-mode-label">Proportional</span>
+                        <span class="sym-mode-sub">Size by value</span>
+                    </div>
+                    <div class="sym-mode-cell" data-mode="rules">
+                        <svg width="24" height="24" viewBox="0 0 24 24"><rect x="1" y="2" width="22" height="6" rx="2" fill="#e94560" opacity="0.8"/><rect x="1" y="10" width="22" height="6" rx="2" fill="#42d4f4" opacity="0.8"/><rect x="1" y="18" width="22" height="6" rx="2" fill="#3cb44b" opacity="0.8"/></svg>
+                        <span class="sym-mode-label">Rule-Based</span>
+                        <span class="sym-mode-sub">Custom conditions</span>
+                    </div>
+                    <div class="sym-mode-cell" data-mode="age">
+                        <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke="#42d4f4" stroke-width="1.8"/><line x1="12" y1="5" x2="12" y2="12" stroke="#42d4f4" stroke-width="1.8" stroke-linecap="round"/><line x1="12" y1="12" x2="17" y2="15" stroke="#42d4f4" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        <span class="sym-mode-label">Age</span>
+                        <span class="sym-mode-sub">Color by age from date</span>
+                    </div>
+                </div>
+
+                <!-- Pending dot indicator -->
+                <span id="sym-pending-dot" class="sym-pending-dot" style="display:none;"></span>
+
+                <!-- Panel: Unique Values -->
+                <div id="sym-panel-unique" class="sym-panel" style="display:none;">
+                    <select id="sym-uv-field" class="sym-select" disabled>
+                        <option value="">Select a field...</option>
+                    </select>
+                    <div id="sym-uv-date-options" class="sym-uv-date-options" style="display:none;">
+                        <label class="sym-uv-date-label">
+                            <input type="checkbox" id="sym-uv-group-year" checked>
+                            <span>Group by year</span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Panel: Graduated -->
+                <div id="sym-panel-graduated" class="sym-panel" style="display:none;">
+                    <select id="sym-grad-field" class="sym-select" disabled>
+                        <option value="">Select a numeric field...</option>
+                    </select>
+                    <div id="sym-grad-options" style="display:none;">
+                        <div class="style-row">
+                            <label>Method:</label>
+                            <select id="sym-grad-method" class="sym-select" style="margin-bottom:0;">
+                                <option value="equalInterval">Equal Interval</option>
+                                <option value="quantile">Quantile</option>
+                                <option value="jenks">Jenks (Natural Breaks)</option>
+                            </select>
+                        </div>
+                        <div class="style-row">
+                            <label>Classes:</label>
+                            <select id="sym-grad-classes" class="sym-select" style="margin-bottom:0;">
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5" selected>5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                            </select>
+                        </div>
+                        <div class="style-row">
+                            <label>Ramp:</label>
+                            <div id="sym-ramp-picker" class="ramp-picker">
+                                <div id="sym-ramp-selected" class="ramp-selected"></div>
+                                <div id="sym-ramp-dropdown" class="ramp-dropdown"></div>
+                            </div>
+                        </div>
+                        <button id="sym-grad-apply" class="sym-apply-btn">Apply</button>
+                    </div>
+                </div>
+
+                <!-- Panel: Proportional -->
+                <div id="sym-panel-proportional" class="sym-panel" style="display:none;">
+                    <select id="sym-prop-field" class="sym-select" disabled>
+                        <option value="">Select a numeric field...</option>
+                    </select>
+                    <div id="sym-prop-options" style="display:none;">
+                        <div class="style-row">
+                            <label>Min Size:</label>
+                            <input type="number" id="sym-prop-min" class="filter-value-input" value="4" min="1" max="50" style="flex:1;" />
+                        </div>
+                        <div class="style-row">
+                            <label>Max Size:</label>
+                            <input type="number" id="sym-prop-max" class="filter-value-input" value="24" min="2" max="80" style="flex:1;" />
+                        </div>
+                        <button id="sym-prop-apply" class="sym-apply-btn">Apply</button>
+                    </div>
+                </div>
+
+                <!-- Panel: Rules -->
+                <div id="sym-panel-rules" class="sym-panel" style="display:none;">
+                    <div id="sym-rules-list"></div>
+                    <button id="sym-add-rule" class="sym-add-rule-btn">+ Add Rule</button>
+                    <button id="sym-rules-apply" class="sym-apply-btn">Apply</button>
+                </div>
+
+                <!-- Panel: Age -->
+                <div id="sym-panel-age" class="sym-panel" style="display:none;">
+                    <select id="sym-age-field" class="sym-select" disabled>
+                        <option value="">Select a date field...</option>
+                    </select>
+                    <div id="sym-age-options" style="display:none;">
+                        <div class="style-row">
+                            <label>Unit:</label>
+                            <select id="sym-age-unit" class="sym-select" style="margin-bottom:0;">
+                                <option value="years">Years</option>
+                                <option value="months">Months</option>
+                            </select>
+                        </div>
+                        <div class="style-row">
+                            <label>Method:</label>
+                            <select id="sym-age-method" class="sym-select" style="margin-bottom:0;">
+                                <option value="equalInterval">Equal Interval</option>
+                                <option value="quantile">Quantile</option>
+                                <option value="jenks">Jenks (Natural Breaks)</option>
+                            </select>
+                        </div>
+                        <div class="style-row">
+                            <label>Classes:</label>
+                            <select id="sym-age-classes" class="sym-select" style="margin-bottom:0;">
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5" selected>5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                            </select>
+                        </div>
+                        <div class="style-row">
+                            <label>Ramp:</label>
+                            <div id="sym-age-ramp-picker" class="ramp-picker">
+                                <div id="sym-age-ramp-selected" class="ramp-selected"></div>
+                                <div id="sym-age-ramp-dropdown" class="ramp-dropdown"></div>
+                            </div>
+                        </div>
+                        <div class="style-row">
+                            <label>Labels:</label>
+                            <input type="checkbox" id="sym-age-labels"> <span style="color:#ccc;">Label features by age</span>
+                        </div>
+                        <button id="sym-age-apply" class="sym-apply-btn">Apply</button>
+                        <button id="sym-age-remove" class="sym-apply-btn" style="background:#333;color:#e94560;margin-top:4px;display:none;">Remove Age</button>
+                    </div>
+                </div>
+
+                <!-- Point shape / Line arrows (shown per geometry type) -->
+                <div id="sym-style-controls">
+                    <div id="sym-point-row" class="style-row" style="display:none;">
+                        <label>Symbol:</label>
+                        <select id="sym-point-shape" class="sym-select" style="margin-bottom:0;">
+                            <option value="circle">Circle</option>
+                            <option value="square">Square</option>
+                            <option value="triangle">Triangle</option>
+                            <option value="diamond">Diamond</option>
+                            <option value="star">Star</option>
+                            <option value="cross">Cross / Plus</option>
+                        </select>
+                    </div>
+                    <div id="sym-arrow-row" class="style-row" style="display:none;">
+                        <label>Arrows:</label>
+                        <input type="checkbox" id="sym-arrows"> <span style="color:#ccc;">Show arrowheads</span>
+                    </div>
+                </div>
+                <button id="sym-reset" class="basemap-btn" style="width:100%; margin-top:4px;">Reset to Default Style</button>
+            </div>
+
+            <!-- Legend -->
+            <div class="sidebar-section">
+                <h4>Legend</h4>
+                <div id="legend-content">
+                    <div class="status-text">Apply symbology to see legend</div>
+                </div>
+            </div>
+
+            <!-- Bookmarks -->
+            <div class="sidebar-section">
+                <h4>Bookmarks</h4>
+                <button id="bookmark-add" class="bookmark-add-btn" title="Bookmark current view">+ Bookmark current view</button>
+                <div id="bookmark-list" class="bookmark-list">
+                    <div class="status-text">No bookmarks yet</div>
+                </div>
+            </div>
+            <button id="save-settings-btn" class="save-settings-btn" title="Save all settings to server">&#128190; Save Settings</button>
+        </div>
+        <div id="sidebar-resize" class="sidebar-resize"></div>
+    </div>
+    <button id="sidebar-toggle">&#9776;</button>
+    <!-- Filter panel (slides out from sidebar) -->
+    <div id="filter-panel" class="filter-panel">
+        <div class="filter-panel-header">
+            <span>Attribute Filter</span>
+            <button id="filter-panel-close" class="filter-panel-close" title="Close">&times;</button>
+        </div>
+        <div class="filter-panel-body">
+            <label class="filter-label">Layer</label>
+            <select id="filter-layer" class="sym-select">
+                <option value="">Select a layer...</option>
+            </select>
+
+            <label class="filter-label">Field</label>
+            <select id="filter-field" class="sym-select" disabled>
+                <option value="">Select a field...</option>
+            </select>
+
+            <label class="filter-label">Operator</label>
+            <select id="filter-op" class="sym-select" disabled>
+                <option value="=">=  (equals)</option>
+                <option value="!=">!=  (not equal)</option>
+                <option value=">">&#62;  (greater than)</option>
+                <option value="<">&#60;  (less than)</option>
+                <option value=">=">&#62;=  (greater or equal)</option>
+                <option value="<=">&#60;=  (less or equal)</option>
+                <option value="CONTAINS">CONTAINS  (has text)</option>
+                <option value="LIKE">LIKE  (pattern match)</option>
+                <option value="ILIKE">ILIKE  (case-insensitive)</option>
+                <option value="IS NULL">IS NULL</option>
+                <option value="IS NOT NULL">IS NOT NULL</option>
+                <option value="BETWEEN">BETWEEN  (range)</option>
+            </select>
+
+            <label class="filter-label" id="filter-value-label">Value</label>
+            <div class="filter-autocomplete-wrap">
+                <input type="text" id="filter-value" class="filter-value-input" placeholder="Enter value..." disabled autocomplete="off" />
+                <div id="filter-suggestions" class="filter-suggestions"></div>
+            </div>
+            <label class="filter-label" id="filter-value-end-label" style="display:none;">To</label>
+            <div class="filter-autocomplete-wrap">
+                <input type="text" id="filter-value-end" class="filter-value-input" placeholder="End value..." disabled style="display:none;" autocomplete="off" />
+                <div id="filter-suggestions-end" class="filter-suggestions"></div>
+            </div>
+            <div class="filter-hint" id="filter-hint">Use % as wildcard for LIKE (e.g. %Main%)</div>
+
+            <div id="filter-combine-row" class="filter-combine-row" style="display:none;">
+                <span class="filter-combine-label">Combine with:</span>
+                <button class="filter-combine-btn active" data-combine="AND">AND</button>
+                <button class="filter-combine-btn" data-combine="OR">OR</button>
+            </div>
+
+            <div class="filter-actions">
+                <button id="filter-apply" class="filter-apply-btn" disabled>Apply Filter</button>
+                <button id="filter-clear" class="filter-clear-btn" disabled>Clear Filter</button>
+            </div>
+
+            <div id="active-filters" class="active-filters">
+                <label class="filter-label">Active Filters</label>
+                <div id="active-filters-list" class="active-filters-list">
+                    <div class="status-text">No active filters</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-indicator">Loading...</div>
+
+    <!-- Workspace selector modal (admin only) -->
+    <div id="ws-modal-overlay" class="ws-modal-overlay" style="display:none;">
+        <div class="ws-modal">
+            <h2>Select Workspace</h2>
+            <p>Choose a workspace to load, or load all layers.</p>
+            <select id="ws-modal-select" class="login-select">
+                <option value="">Discovering workspaces...</option>
+            </select>
+            <div class="ws-modal-actions">
+                <button id="ws-modal-all" class="login-btn" style="background:#0f3460;" disabled>Load All Workspaces</button>
+                <button id="ws-modal-ok" class="login-btn" disabled>Load Selected</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Leaflet MarkerCluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+    <!-- Leaflet PolylineDecorator (arrowheads) -->
+    <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
+
+    <!-- App JS (order matters) -->
+    <script src="js/auth.js"></script>
+    <script src="js/config.js"></script>
+    <script src="js/map.js"></script>
+    <script src="js/markers.js"></script>
+    <script src="js/arrows.js"></script>
+    <script src="js/layers.js"></script>
+    <script src="js/labels.js"></script>
+    <script src="js/session.js"></script>
+    <script src="js/symbology-classify.js"></script>
+    <script src="js/symbology-legend.js"></script>
+    <script src="js/symbology.js"></script>
+    <script src="js/symbology-graduated.js"></script>
+    <script src="js/symbology-proportional.js"></script>
+    <script src="js/symbology-rules.js"></script>
+    <script src="js/symbology-ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
