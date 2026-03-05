@@ -1,6 +1,6 @@
 # POSM GIS
 
-A web-based GIS map viewer for POSM (Point of Service Management) that connects to a GeoServer/PostGIS backend. Users can visualize, style, filter, and share geospatial layers through an interactive Leaflet map.
+A web-based GIS map viewer for POSM (POSM Software) that connects to a GeoServer/PostGIS backend. Users can visualize, style, filter, and share geospatial layers through an interactive Leaflet map.
 
 ## Project Structure
 
@@ -123,4 +123,5 @@ The `legacy-vanilla-js/` folder contains the original vanilla JavaScript impleme
 
 ## License
 
-Private — POSM Software
+Octavio Pereira R — POSM Software
+octaviopr89@gmail.com
