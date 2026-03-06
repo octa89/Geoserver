@@ -122,9 +122,18 @@ export function useSession() {
       }
     }
 
-    // Restore layer order
+    // Restore layer order — merge saved order with any newly discovered layers
     if (Array.isArray(config.layerOrder) && config.layerOrder.length > 0) {
-      setLayerOrder(config.layerOrder);
+      const currentLayers = useStore.getState().layers;
+      const savedSet = new Set(config.layerOrder);
+      // Start with saved order (only layers that still exist), then append new layers
+      const merged = config.layerOrder.filter((n) => currentLayers[n]);
+      for (const name of Object.keys(currentLayers)) {
+        if (!savedSet.has(name)) {
+          merged.push(name);
+        }
+      }
+      setLayerOrder(merged);
     }
 
     return config;

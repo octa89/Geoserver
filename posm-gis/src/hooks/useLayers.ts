@@ -172,6 +172,7 @@ export function useLayers(mapRef: React.RefObject<L.Map | null>) {
             labelField: null,
             fields,
             featureCount: geojson.features.length,
+            totalFeatureCount: geojson.features.length,
             symbology: null,
             activeFilters: [],
             filterCombineMode: 'AND',

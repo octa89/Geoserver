@@ -39,7 +39,7 @@ export function addArrowDecorators(
     const decorator: L.Layer = LD.polylineDecorator(sublayer, {
       patterns: [
         {
-          offset: '100%',
+          offset: '50%',
           repeat: 0,
           symbol: LD.Symbol.arrowHead({
             pixelSize: 12,

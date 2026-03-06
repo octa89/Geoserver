@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import type { RefObject } from 'react';
+import type L from 'leaflet';
 import { useStore } from '../../store';
 import { resetSymbology, refreshClusterAfterSymbology } from '../../lib/symbology';
-import { getLayerRefs } from '../../store/leafletRegistry';
+import { getLayerRefs, setLayerRefs } from '../../store/leafletRegistry';
+import { toggleArrows } from '../../lib/arrows';
+import { darkenColor } from '../../lib/colorUtils';
 import { UniqueValuesPanel } from './UniqueValuesPanel';
 import { GraduatedPanel } from './GraduatedPanel';
 import { ProportionalPanel } from './ProportionalPanel';
 import { RulesPanel } from './RulesPanel';
 
-type SymbologyMode = 'unique' | 'graduated' | 'proportional' | 'rules' | null;
+type SymbologyMode = 'single' | 'unique' | 'graduated' | 'proportional' | 'rules' | null;
 
 interface ModeButton {
   key: SymbologyMode;
@@ -15,29 +19,104 @@ interface ModeButton {
 }
 
 const MODE_BUTTONS: ModeButton[] = [
+  { key: 'single', label: 'Single Symbol' },
   { key: 'unique', label: 'Unique Values' },
   { key: 'graduated', label: 'Graduated' },
   { key: 'proportional', label: 'Proportional' },
   { key: 'rules', label: 'Rules' },
 ];
 
+interface SymbologyPanelProps {
+  mapRef: RefObject<L.Map | null>;
+}
+
 /**
  * Main Symbology panel.
  *
  * - Layer selector dropdown (ordered by store.layerOrder)
- * - Mode grid: Unique Values / Graduated / Proportional / Rules / Reset
- * - Sub-panel for the active mode
+ * - Flow direction arrows toggle (line layers, always visible)
+ * - Mode grid: Single Symbol / Unique Values / Graduated / Proportional / Rules / Reset
+ * - Sub-panel for the active mode (stays open, no toggle-off)
  */
-export function SymbologyPanel() {
+export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
   const layers = useStore((s) => s.layers);
   const layerOrder = useStore((s) => s.layerOrder);
   const setLayerSymbology = useStore((s) => s.setLayerSymbology);
+  const setLayerColor = useStore((s) => s.setLayerColor);
+  const setLayerArrows = useStore((s) => s.setLayerArrows);
 
-  // Default to the first loaded layer
   const [selectedLayer, setSelectedLayer] = useState<string>(() => layerOrder[0] ?? '');
   const [mode, setMode] = useState<SymbologyMode>(null);
 
   const orderedLayers = layerOrder.filter((n) => Boolean(layers[n]));
+  const layerConfig = selectedLayer ? layers[selectedLayer] : null;
+
+  const isLine = layerConfig
+    ? layerConfig.geomType === 'LineString' || layerConfig.geomType === 'MultiLineString'
+    : false;
+
+  // ---- Single Symbol: change base color ------------------------------------
+
+  const handleSingleColorChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!selectedLayer || !layerConfig) return;
+      const newColor = e.target.value;
+
+      setLayerColor(selectedLayer, newColor);
+
+      // Clear any advanced symbology and apply solid color
+      if (layerConfig.symbology) {
+        setLayerSymbology(selectedLayer, null);
+      }
+
+      const refs = getLayerRefs(selectedLayer);
+      if (refs) {
+        resetSymbology(
+          refs.leafletLayer,
+          layerConfig.geomType,
+          newColor,
+          layerConfig.pointSymbol,
+          refs.geojson
+        );
+        refreshClusterAfterSymbology(refs);
+
+        // Refresh arrow decorators if active
+        if (layerConfig.showArrows) {
+          const map = mapRef.current;
+          if (map) {
+            const newDecorators = toggleArrows(
+              map, selectedLayer, refs.leafletLayer,
+              newColor, true, refs.arrowDecorators
+            );
+            setLayerRefs(selectedLayer, { ...refs, arrowDecorators: newDecorators });
+          }
+        }
+      }
+    },
+    [selectedLayer, layerConfig, setLayerColor, setLayerSymbology, mapRef]
+  );
+
+  // ---- Flow direction arrows toggle ----------------------------------------
+
+  const handleArrowToggle = useCallback(() => {
+    if (!selectedLayer || !layerConfig) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    const refs = getLayerRefs(selectedLayer);
+    if (!refs) return;
+
+    const willShow = !layerConfig.showArrows;
+    const newDecorators = toggleArrows(
+      map, selectedLayer, refs.leafletLayer,
+      layerConfig.color, willShow, refs.arrowDecorators
+    );
+
+    setLayerRefs(selectedLayer, { ...refs, arrowDecorators: newDecorators });
+    setLayerArrows(selectedLayer, willShow);
+  }, [selectedLayer, layerConfig, setLayerArrows, mapRef]);
+
+  // ---- Reset ---------------------------------------------------------------
 
   const handleReset = () => {
     if (!selectedLayer) return;
@@ -50,7 +129,8 @@ export function SymbologyPanel() {
         refs.leafletLayer,
         layer.geomType,
         layer.color,
-        layer.pointSymbol
+        layer.pointSymbol,
+        refs.geojson
       );
       refreshClusterAfterSymbology(refs);
     }
@@ -59,8 +139,9 @@ export function SymbologyPanel() {
     setMode(null);
   };
 
+  // Clicking a mode always opens it (no toggle-off); clicking another switches
   const handleModeSelect = (m: SymbologyMode) => {
-    setMode((prev) => (prev === m ? null : m));
+    setMode(m);
   };
 
   return (
@@ -87,6 +168,31 @@ export function SymbologyPanel() {
           ))}
         </select>
       </label>
+
+      {/* Flow direction arrows — line layers only (always visible) */}
+      {selectedLayer && layerConfig && isLine && (
+        <button
+          onClick={handleArrowToggle}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '5px 8px',
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 3,
+            border: `1px solid ${layerConfig.showArrows ? '#42d4f4' : '#3a3a5a'}`,
+            background: layerConfig.showArrows ? '#1e3a4a' : '#2d2d44',
+            color: layerConfig.showArrows ? '#42d4f4' : '#bbb',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          <span style={{ fontSize: 14 }}>{layerConfig.showArrows ? '\u27A4' : '\u2192'}</span>
+          {layerConfig.showArrows ? 'Flow Arrows ON' : 'Show Flow Direction'}
+        </button>
+      )}
 
       {/* Mode grid */}
       {selectedLayer && (
@@ -132,6 +238,41 @@ export function SymbologyPanel() {
       )}
 
       {/* Sub-panels */}
+      {selectedLayer && mode === 'single' && layerConfig && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 8,
+          padding: '8px 10px',
+          background: '#2d2d44',
+          borderRadius: 4,
+          border: '1px solid #3a3a5a',
+        }}>
+          <div style={{ fontSize: 11, color: '#aaa', fontWeight: 600 }}>
+            Pick a color for all features
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <input
+              type="color"
+              value={layerConfig.color}
+              onChange={handleSingleColorChange}
+              title="Layer color"
+              style={{
+                width: 40,
+                height: 30,
+                padding: 0,
+                border: `2px solid ${darkenColor(layerConfig.color)}`,
+                borderRadius: 4,
+                cursor: 'pointer',
+                background: 'none',
+              }}
+            />
+            <span style={{ fontSize: 13, color: '#ccc', fontFamily: 'monospace' }}>
+              {layerConfig.color.toUpperCase()}
+            </span>
+          </div>
+        </div>
+      )}
       {selectedLayer && mode === 'unique' && (
         <UniqueValuesPanel layerName={selectedLayer} />
       )}

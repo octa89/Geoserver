@@ -105,7 +105,11 @@ export function LayerItem({ name, mapRef }: LayerItemProps) {
     labelField,
     fields,
     featureCount,
+    totalFeatureCount,
+    activeFilters,
   } = layer;
+
+  const isFiltered = activeFilters && activeFilters.length > 0;
 
   const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
 
@@ -279,8 +283,10 @@ export function LayerItem({ name, mapRef }: LayerItemProps) {
         title={name}
       >
         {label}{' '}
-        <span style={{ color: '#999', fontSize: 11 }}>
-          ({featureCount.toLocaleString()})
+        <span style={{ color: isFiltered ? '#42d4f4' : '#999', fontSize: 11 }}>
+          {isFiltered
+            ? `(${featureCount.toLocaleString()}/${totalFeatureCount.toLocaleString()})`
+            : `(${featureCount.toLocaleString()})`}
         </span>
       </span>
 

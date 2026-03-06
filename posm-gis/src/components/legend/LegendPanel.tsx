@@ -1,4 +1,7 @@
+import { useRef } from 'react';
 import { useStore } from '../../store';
+import { resetSymbology, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { getLayerRefs } from '../../store/leafletRegistry';
 import type {
   SymbologyConfig,
   UniqueSymbology,
@@ -29,6 +32,75 @@ function Swatch({ color, size = 12 }: { color: string; size?: number }) {
   );
 }
 
+/**
+ * Clickable swatch that opens a hidden color input when clicked.
+ * Used for layers without symbology (single symbol mode).
+ */
+function ClickableSwatch({ color, layerName, size = 12 }: { color: string; layerName: string; size?: number }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const setLayerColor = useStore((s) => s.setLayerColor);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newColor = e.target.value;
+    setLayerColor(layerName, newColor);
+
+    const layer = useStore.getState().layers[layerName];
+    if (!layer) return;
+
+    const refs = getLayerRefs(layerName);
+    if (refs) {
+      resetSymbology(
+        refs.leafletLayer,
+        layer.geomType,
+        newColor,
+        layer.pointSymbol,
+        refs.geojson
+      );
+      refreshClusterAfterSymbology(refs);
+    }
+  };
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+      <span
+        className="legend-swatch"
+        onClick={() => inputRef.current?.click()}
+        title="Click to change color"
+        style={{
+          display: 'inline-block',
+          width: size,
+          height: size,
+          borderRadius: 2,
+          background: color,
+          border: '1px solid rgba(255,255,255,0.15)',
+          cursor: 'pointer',
+          transition: 'box-shadow 0.15s',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 0 0 2px #42d4f4'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+      />
+      <input
+        ref={inputRef}
+        type="color"
+        value={color}
+        onChange={handleChange}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: 0,
+          height: 0,
+          opacity: 0,
+          overflow: 'hidden',
+          border: 'none',
+          padding: 0,
+        }}
+        tabIndex={-1}
+      />
+    </span>
+  );
+}
+
 function LegendEntry({ color, label, size }: { color: string; label: string; size?: number }) {
   return (
     <div
@@ -36,6 +108,20 @@ function LegendEntry({ color, label, size }: { color: string; label: string; siz
       style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#ccc', marginBottom: 2 }}
     >
       <Swatch color={color} size={size} />
+      <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {label}
+      </span>
+    </div>
+  );
+}
+
+function ClickableLegendEntry({ color, label, layerName, size }: { color: string; label: string; layerName: string; size?: number }) {
+  return (
+    <div
+      className="legend-entry"
+      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#ccc', marginBottom: 2 }}
+    >
+      <ClickableSwatch color={color} layerName={layerName} size={size} />
       <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {label}
       </span>
@@ -172,6 +258,9 @@ function RampStrip({ ramp }: { ramp: string }) {
 /**
  * Reads all visible layers from the store and renders appropriate legend
  * entries based on their symbology configuration.
+ *
+ * When no symbology is active (single symbol), the color swatch is clickable
+ * to change the layer's base color.
  */
 export function LegendPanel() {
   const layers = useStore((s) => s.layers);
@@ -213,6 +302,8 @@ export function LegendPanel() {
               {/* Swatch showing mode type or default color */}
               {sym?.mode === 'graduated' ? (
                 <RampStrip ramp={(sym as GraduatedSymbology).ramp} />
+              ) : !sym ? (
+                <ClickableSwatch color={layer.color} layerName={name} size={10} />
               ) : (
                 <Swatch color={layer.color} size={10} />
               )}
@@ -230,7 +321,7 @@ export function LegendPanel() {
               {sym ? (
                 <SymbologyLegend sym={sym} />
               ) : (
-                <LegendEntry color={layer.color} label={layer.label} />
+                <ClickableLegendEntry color={layer.color} label={layer.label} layerName={name} />
               )}
             </div>
           </div>

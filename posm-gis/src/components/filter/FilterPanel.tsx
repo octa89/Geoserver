@@ -123,6 +123,22 @@ export function FilterPanel({ mapRef }: FilterPanelProps) {
 
   const availableLayers = layerOrder.filter((name) => layers[name]);
 
+  const totalActiveFilters = availableLayers.reduce(
+    (sum, name) => sum + (layers[name]?.activeFilters?.length ?? 0),
+    0
+  );
+
+  const handleClearAllLayers = async () => {
+    const layersWithFilters = availableLayers.filter(
+      (name) => (layers[name]?.activeFilters?.length ?? 0) > 0
+    );
+    for (const name of layersWithFilters) {
+      setLayerFilters(name, []);
+    }
+    await Promise.resolve();
+    await Promise.allSettled(layersWithFilters.map((name) => applyFilters(name)));
+  };
+
   if (availableLayers.length === 0) {
     return (
       <div className="filter-panel">
@@ -133,6 +149,29 @@ export function FilterPanel({ mapRef }: FilterPanelProps) {
 
   return (
     <div className="filter-panel">
+      {/* Clear all filters across all layers */}
+      <button
+        onClick={handleClearAllLayers}
+        disabled={totalActiveFilters === 0}
+        style={{
+          width: '100%',
+          background: totalActiveFilters > 0 ? '#e94560' : '#2d2d44',
+          color: totalActiveFilters > 0 ? '#fff' : '#666',
+          border: 'none',
+          borderRadius: 4,
+          padding: '6px 0',
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: totalActiveFilters > 0 ? 'pointer' : 'default',
+          marginBottom: 8,
+          transition: 'background 0.2s',
+        }}
+      >
+        {totalActiveFilters > 0
+          ? `Clear All Filters (${totalActiveFilters})`
+          : 'No Active Filters'}
+      </button>
+
       {/* Layer selector */}
       <div style={{ marginBottom: 8 }}>
         <select

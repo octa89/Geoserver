@@ -9,7 +9,7 @@ import 'leaflet.markercluster';
 import { useStore } from '../store';
 import { getAllLayerRefs, getLayerRefs, setLayerRefs, clearRegistry } from '../store/leafletRegistry';
 import { initLabelMoveListener, computeLabelMinZoom, removeLabels, applyLabels, updateLabelVisibility } from '../lib/labels';
-import { applySymbology } from '../lib/symbology';
+import { applySymbology, refreshClusterAfterSymbology } from '../lib/symbology';
 import { BASEMAPS, DEFAULT_CENTER, DEFAULT_ZOOM, MAX_ZOOM, MAX_NATIVE_ZOOM } from '../config/constants';
 import { logout, getUserWorkspaces } from '../config/auth';
 import type { AppUser } from '../config/auth';
@@ -46,6 +46,9 @@ export function MapPage({ user }: MapPageProps) {
   const [wsModalOpen, setWsModalOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const autoSaveCleanupRef = useRef<(() => void) | null>(null);
+
+  // Mobile sidebar state
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Determine if user is admin (__ALL__ access)
   const userWorkspaceList = getUserWorkspaces(user);
@@ -218,6 +221,7 @@ export function MapPage({ user }: MapPageProps) {
                 cfg.pointSymbol,
                 cfg.symbology
               );
+              refreshClusterAfterSymbology(refs);
             } catch (e) {
               console.warn(`[loadWorkspaces] symbology restore failed for "${layerName}"`, e);
             }
@@ -274,6 +278,23 @@ export function MapPage({ user }: MapPageProps) {
         userWorkspaces={isAdmin ? null : (userWorkspaceList.length > 1 ? userWorkspaceList : null)}
       />
 
+      {/* Mobile hamburger button */}
+      <button
+        className="mobile-menu-btn"
+        onClick={() => setMobileSidebarOpen(true)}
+        aria-label="Open menu"
+      >
+        &#9776;
+      </button>
+
+      {/* Mobile backdrop */}
+      {mobileSidebarOpen && (
+        <div
+          className="sidebar-mobile-backdrop visible"
+          onClick={() => setMobileSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <Sidebar
         mapRef={mapRef}
@@ -281,6 +302,8 @@ export function MapPage({ user }: MapPageProps) {
         onLogout={handleLogout}
         isAdmin={isAdmin}
         onSwitchWorkspace={handleSwitchWorkspace}
+        mobileOpen={mobileSidebarOpen}
+        onMobileClose={() => setMobileSidebarOpen(false)}
       />
 
       {/* Map */}

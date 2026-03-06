@@ -16,7 +16,7 @@ import {
   classifyJenks,
   classifyValue,
 } from './classify';
-import { pointSVG } from './markers';
+import { pointSVG, createPointMarker } from './markers';
 import type { LeafletLayerRefs } from '../store/leafletRegistry';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +71,40 @@ export function defaultStyle(
     fillOpacity: 0.35,
     opacity: 1,
   };
+}
+
+// ---------------------------------------------------------------------------
+// rebuildPointLayerWithColors  (helper for point symbology)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rebuild a point GeoJSON layer from scratch with per-feature colors.
+ *
+ * Calling setStyle() on CircleMarkers inside a MarkerClusterGroup does not
+ * reliably produce a visual update. Instead, this helper clears the layer
+ * and re-adds the GeoJSON data with a new pointToLayer callback that creates
+ * fresh markers with the correct colors.
+ *
+ * Any onEachFeature callback set on the layer options (e.g. popup binding)
+ * is automatically invoked for each new sublayer when addData runs.
+ */
+function rebuildPointLayerWithColors(
+  leafletLayer: L.GeoJSON,
+  geojson: GeoJSON.FeatureCollection,
+  pointSymbol: string,
+  getColor: (feature: GeoJSON.Feature) => string,
+  getRadius?: (feature: GeoJSON.Feature) => number | undefined,
+): void {
+  leafletLayer.clearLayers();
+  leafletLayer.options.pointToLayer = (feature: GeoJSON.Feature, latlng: L.LatLng) => {
+    const color = getColor(feature);
+    const darker = darkenColor(color);
+    const radius = getRadius?.(feature);
+    const size = radius !== undefined ? radius * 2 : 10;
+    return createPointMarker(latlng, pointSymbol, color, darker, size);
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  leafletLayer.addData(geojson as any);
 }
 
 // ---------------------------------------------------------------------------
@@ -289,21 +323,29 @@ export function applyUniqueValues(
     valueColorMap[key] = COLOR_PALETTE[idx % COLOR_PALETTE.length];
   });
 
-  // Step 4: Restyle each sub-layer
-  leafletLayer.eachLayer((sublayer) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
-    if (!feature) return;
-
+  // Step 4: Apply colors to each feature
+  const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
+  const getFeatureColor = (feature: GeoJSON.Feature): string => {
     let raw = feature.properties?.[field];
     if (raw === null || raw === undefined) raw = '';
     const key = groupByYear
       ? (extractYear(raw) ?? String(raw))
       : String(raw);
+    return valueColorMap[key] ?? '#888888';
+  };
 
-    const color = valueColorMap[key] ?? '#888888';
-    applyStyleToLayer(sublayer, color, geomType, pointSymbol);
-  });
+  if (isPoint) {
+    // Rebuild point layer with correctly-colored markers
+    rebuildPointLayerWithColors(leafletLayer, geojson, pointSymbol, getFeatureColor);
+  } else {
+    // Lines/polygons: setStyle works directly
+    leafletLayer.eachLayer((sublayer) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
+      if (!feature) return;
+      applyStyleToLayer(sublayer, getFeatureColor(feature), geomType, pointSymbol);
+    });
+  }
 
   return {
     mode: 'unique',
@@ -353,23 +395,28 @@ export function applyGraduated(
   // Step 3: Generate colors from ramp
   const colors = generateRampColors(ramp, nClasses);
 
-  // Step 4: Restyle each sub-layer
-  leafletLayer.eachLayer((sublayer) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
-    if (!feature) return;
-
+  // Step 4: Apply colors to each feature
+  const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
+  const getFeatureColor = (feature: GeoJSON.Feature): string => {
     const raw = feature.properties?.[field];
     const num = raw !== null && raw !== undefined ? Number(raw) : NaN;
-
-    let color = colors[0] ?? '#cccccc';
     if (isFinite(num) && breaks.length >= 2) {
       const classIdx = classifyValue(num, breaks);
-      color = colors[Math.min(classIdx, colors.length - 1)] ?? '#cccccc';
+      return colors[Math.min(classIdx, colors.length - 1)] ?? '#cccccc';
     }
+    return colors[0] ?? '#cccccc';
+  };
 
-    applyStyleToLayer(sublayer, color, geomType, pointSymbol);
-  });
+  if (isPoint) {
+    rebuildPointLayerWithColors(leafletLayer, geojson, pointSymbol, getFeatureColor);
+  } else {
+    leafletLayer.eachLayer((sublayer) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
+      if (!feature) return;
+      applyStyleToLayer(sublayer, getFeatureColor(feature), geomType, pointSymbol);
+    });
+  }
 
   return {
     mode: 'graduated',
@@ -418,28 +465,38 @@ export function applyProportional(
   const isLine =
     geomType === 'LineString' || geomType === 'MultiLineString';
 
-  leafletLayer.eachLayer((sublayer) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
-    if (!feature) return;
+  const fillColor = color ?? '#3388ff';
 
+  const getFeatureT = (feature: GeoJSON.Feature): number => {
     const raw = feature.properties?.[field];
     const num = raw !== null && raw !== undefined ? Number(raw) : NaN;
-    const t = isFinite(num) ? (num - minVal) / range : 0;
-    const scaled = minSize + t * (maxSize - minSize);
+    return isFinite(num) ? (num - minVal) / range : 0;
+  };
 
-    const fillColor = color ?? '#3388ff';
-
-    if (isPoint) {
-      applyStyleToLayer(sublayer, fillColor, geomType, pointSymbol, scaled / 2);
-    } else if (isLine) {
-      applyStyleToLayer(sublayer, fillColor, geomType, pointSymbol, scaled);
-    } else {
-      // Polygon: vary fillOpacity between 0.1 and 0.8
-      const opacity = 0.1 + t * 0.7;
-      applyStyleToLayer(sublayer, fillColor, geomType, pointSymbol, opacity);
-    }
-  });
+  if (isPoint) {
+    rebuildPointLayerWithColors(
+      leafletLayer, geojson, pointSymbol,
+      () => fillColor,
+      (feature) => {
+        const t = getFeatureT(feature);
+        return (minSize + t * (maxSize - minSize)) / 2;
+      }
+    );
+  } else {
+    leafletLayer.eachLayer((sublayer) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
+      if (!feature) return;
+      const t = getFeatureT(feature);
+      const scaled = minSize + t * (maxSize - minSize);
+      if (isLine) {
+        applyStyleToLayer(sublayer, fillColor, geomType, pointSymbol, scaled);
+      } else {
+        const opacity = 0.1 + t * 0.7;
+        applyStyleToLayer(sublayer, fillColor, geomType, pointSymbol, opacity);
+      }
+    });
+  }
 
   return {
     mode: 'proportional',
@@ -476,23 +533,25 @@ export function applyRules(
 ): RuleSymbology {
   const { rules, defaultColor } = opts;
 
-  leafletLayer.eachLayer((sublayer) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
-    if (!feature) return;
-
+  const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
+  const getFeatureColor = (feature: GeoJSON.Feature): string => {
     const props = feature.properties ?? {};
-    let matchedColor = defaultColor;
-
     for (const rule of rules) {
-      if (testRule(props, rule)) {
-        matchedColor = rule.color;
-        break;
-      }
+      if (testRule(props, rule)) return rule.color;
     }
+    return defaultColor;
+  };
 
-    applyStyleToLayer(sublayer, matchedColor, geomType, pointSymbol);
-  });
+  if (isPoint) {
+    rebuildPointLayerWithColors(leafletLayer, _geojson, pointSymbol, getFeatureColor);
+  } else {
+    leafletLayer.eachLayer((sublayer) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
+      if (!feature) return;
+      applyStyleToLayer(sublayer, getFeatureColor(feature), geomType, pointSymbol);
+    });
+  }
 
   return {
     mode: 'rules',
@@ -559,16 +618,42 @@ function testRule(
 
 /**
  * After restyling individual markers inside a cluster group, the cluster
- * group doesn't automatically reflect the new styles. This helper clears
- * and re-adds the GeoJSON layer to force the cluster group to re-ingest
- * the markers with their updated visual properties.
+ * group doesn't automatically reflect the new styles. This helper forces
+ * a complete visual rebuild so the map displays the updated symbology.
+ *
+ * For clustered layers: removes the cluster group from the map, clears and
+ * re-adds the GeoJSON layer, then adds the cluster group back to the map.
+ * Simply clearing + re-adding while the cluster group stays on the map is
+ * not sufficient — the batch processing may defer rendering.
+ *
+ * For unclustered layers: calls redraw() on each CircleMarker to force the
+ * canvas/SVG renderer to repaint with the updated style options.
  *
  * Call this after any applyXxx / resetSymbology when the layer may be clustered.
  */
 export function refreshClusterAfterSymbology(refs: LeafletLayerRefs): void {
-  if (!refs.clusterGroup) return;
+  if (!refs.clusterGroup) {
+    // Unclustered layer: force redraw on each sublayer
+    refs.leafletLayer.eachLayer((sublayer) => {
+      if (sublayer instanceof L.CircleMarker && (sublayer as L.CircleMarker & { _map?: L.Map })._map) {
+        sublayer.redraw();
+      }
+    });
+    return;
+  }
+
+  // Get map reference from the cluster group's internal Leaflet state
+  const map: L.Map | undefined = (refs.clusterGroup as L.MarkerClusterGroup & { _map?: L.Map })._map;
+
+  // Remove cluster group from map to force complete visual rebuild
+  if (map) {
+    map.removeLayer(refs.clusterGroup);
+  }
   refs.clusterGroup.clearLayers();
   refs.clusterGroup.addLayer(refs.leafletLayer);
+  if (map) {
+    map.addLayer(refs.clusterGroup);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -577,14 +662,21 @@ export function refreshClusterAfterSymbology(refs: LeafletLayerRefs): void {
 
 /**
  * Reset every sub-layer in a GeoJSON layer to its default style.
+ * Accepts optional geojson for point layer rebuild (required for clustered layers).
  */
 export function resetSymbology(
   leafletLayer: L.GeoJSON,
   geomType: GeomType,
   color: string,
-  pointSymbol: string
+  pointSymbol: string,
+  geojson?: GeoJSON.FeatureCollection
 ): void {
-  leafletLayer.eachLayer((sublayer) => {
-    applyStyleToLayer(sublayer, color, geomType, pointSymbol);
-  });
+  const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
+  if (isPoint && geojson) {
+    rebuildPointLayerWithColors(leafletLayer, geojson, pointSymbol, () => color);
+  } else {
+    leafletLayer.eachLayer((sublayer) => {
+      applyStyleToLayer(sublayer, color, geomType, pointSymbol);
+    });
+  }
 }

@@ -30,6 +30,8 @@ interface SidebarProps {
   onLogout?: () => void;
   isAdmin?: boolean;
   onSwitchWorkspace?: () => void;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,9 +49,11 @@ interface SidebarProps {
  * Width is stored in local state; the map container automatically fills the
  * remaining horizontal space because the parent uses a flex layout.
  */
-export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace }: SidebarProps) {
-  const sidebarOpen = useStore((s) => s.sidebarOpen);
+export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace, mobileOpen, onMobileClose }: SidebarProps) {
+  const storeSidebarOpen = useStore((s) => s.sidebarOpen);
   const setSidebarOpen = useStore((s) => s.setSidebarOpen);
+  // On mobile, when the overlay is open, always show expanded content
+  const sidebarOpen = mobileOpen || storeSidebarOpen;
   const basemap = useStore((s) => s.basemap);
   const setBasemap = useStore((s) => s.setBasemap);
   const currentWorkspace = useStore((s) => s.currentWorkspace);
@@ -113,7 +117,7 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace }: 
   return (
     <div
       ref={sidebarRef}
-      className={`sidebar ${sidebarOpen ? 'sidebar--open' : 'sidebar--collapsed'}`}
+      className={`sidebar ${sidebarOpen ? 'sidebar--open' : 'sidebar--collapsed'}${mobileOpen ? ' sidebar--mobile-open' : ''}`}
       style={{
         position: 'relative',
         width: sidebarOpen ? width : 40,
@@ -144,11 +148,15 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace }: 
         <button
           className="sidebar-toggle"
           onClick={() => {
-            setSidebarOpen(!sidebarOpen);
+            if (mobileOpen && onMobileClose) {
+              onMobileClose();
+            } else {
+              setSidebarOpen(!sidebarOpen);
+            }
             // Give the browser a tick to reflow before telling Leaflet
             setTimeout(() => mapRef.current?.invalidateSize(), 200);
           }}
-          title={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          title={mobileOpen ? 'Close menu' : sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
           style={{
             background: 'none',
             border: 'none',
@@ -159,9 +167,9 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace }: 
             padding: 0,
             flexShrink: 0,
           }}
-          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          aria-label={mobileOpen ? 'Close menu' : sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
         >
-          {sidebarOpen ? '\u276E' : '\u276F'}
+          {mobileOpen ? '\u2715' : sidebarOpen ? '\u276E' : '\u276F'}
         </button>
 
         {sidebarOpen && (
@@ -227,8 +235,8 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace }: 
             </button>
 
             {user && (
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ color: '#888', fontSize: 11, whiteSpace: 'nowrap' }}>{user.displayName}</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 1, minWidth: 0 }}>
+                <span style={{ color: '#888', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.displayName}</span>
                 {onLogout && (
                   <button
                     onClick={onLogout}
@@ -411,7 +419,7 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace }: 
             >
               Symbology
             </h4>
-            <SymbologyPanel />
+            <SymbologyPanel mapRef={mapRef} />
           </section>
 
           {/* Legend panel */}
@@ -463,11 +471,10 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace }: 
             position: 'absolute',
             top: 0,
             right: 0,
-            width: 5,
             height: '100%',
             cursor: 'col-resize',
             zIndex: 10,
-            background: 'transparent',
+            borderRadius: '0 2px 2px 0',
           }}
           title="Drag to resize sidebar"
           aria-hidden="true"

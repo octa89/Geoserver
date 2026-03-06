@@ -35,7 +35,7 @@ export function MapLegendControl() {
         border: '1px solid rgba(66,212,244,0.3)',
         borderRadius: 8,
         boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-        minWidth: collapsed ? 44 : 240,
+        minWidth: collapsed ? 44 : 200,
         maxWidth: 360,
         maxHeight: collapsed ? 40 : 'calc(85vh - 40px)',
         overflow: 'hidden',
@@ -101,8 +101,10 @@ export function MapLegendControl() {
                   }}>
                     {layer.label}
                   </span>
-                  <span style={{ fontSize: 11, color: '#888', flexShrink: 0 }}>
-                    {layer.featureCount.toLocaleString()}
+                  <span style={{ fontSize: 11, color: layer.activeFilters?.length ? '#42d4f4' : '#888', flexShrink: 0 }}>
+                    {layer.activeFilters?.length
+                      ? `${layer.featureCount.toLocaleString()}/${layer.totalFeatureCount.toLocaleString()}`
+                      : layer.featureCount.toLocaleString()}
                   </span>
                 </div>
 

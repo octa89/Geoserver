@@ -323,58 +323,78 @@ function openPopupFieldConfig(layerName: string, sampleProps: Record<string, unk
 // ---------------------------------------------------------------------------
 
 /**
+ * Bind a click popup to a single feature/layer pair.
+ */
+function bindPopupToFeature(
+  feature: GeoJSON.Feature,
+  layer: L.Layer,
+  leafletLayer: L.GeoJSON,
+  layerName: string
+): void {
+  const props = (feature.properties ?? {}) as Record<string, unknown>;
+
+  layer.on('click', (e: L.LeafletMouseEvent) => {
+    const html = buildPopupHtml(props, layerName);
+
+    // Resolve click position
+    const latlng =
+      e.latlng ??
+      ((layer as L.Marker).getLatLng
+        ? (layer as L.Marker).getLatLng()
+        : null);
+    if (!latlng) return;
+
+    // Resolve map instance
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const map: L.Map | undefined =
+      (layer as any)._map ??
+      (e.target as any)?._map ??
+      (leafletLayer as any)._map;
+    if (!map) return;
+
+    const isMobile = window.innerWidth < 768;
+    L.popup({ maxWidth: isMobile ? 280 : 380, maxHeight: isMobile ? 300 : 350, className: 'posm-popup' })
+      .setLatLng(latlng)
+      .setContent(html)
+      .openOn(map);
+
+    // Wire gear button after popup is in DOM (same technique as vanilla JS)
+    setTimeout(() => {
+      const btn = document.querySelector(
+        `.popup-config-btn[data-layer="${layerName}"]`
+      ) as HTMLElement | null;
+      if (btn) {
+        btn.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          openPopupFieldConfig(layerName, props);
+        });
+      }
+    }, 50);
+  });
+}
+
+/**
  * Bind a click-triggered popup to every sub-layer in a Leaflet GeoJSON layer.
- * Matches the vanilla JS: click → build HTML with gear → open popup → wire gear.
+ * Also sets onEachFeature on the layer options so that popups are automatically
+ * re-bound when the layer is rebuilt via clearLayers() + addData() (e.g. during
+ * symbology changes that rebuild point layers).
  */
 export function bindPopups(
   leafletLayer: L.GeoJSON,
   layerName: string,
   _fields: string[]
 ): void {
+  // Store as onEachFeature so popups auto-bind on future addData() calls
+  leafletLayer.options.onEachFeature = (feature: GeoJSON.Feature, layer: L.Layer) => {
+    bindPopupToFeature(feature, layer, leafletLayer, layerName);
+  };
+
+  // Bind on current sublayers
   leafletLayer.eachLayer((sublayer) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
     if (!feature) return;
-
-    const props = (feature.properties ?? {}) as Record<string, unknown>;
-
-    sublayer.on('click', (e: L.LeafletMouseEvent) => {
-      const html = buildPopupHtml(props, layerName);
-
-      // Resolve click position
-      const latlng =
-        e.latlng ??
-        ((sublayer as L.Marker).getLatLng
-          ? (sublayer as L.Marker).getLatLng()
-          : null);
-      if (!latlng) return;
-
-      // Resolve map instance
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const map: L.Map | undefined =
-        (sublayer as any)._map ??
-        (e.target as any)?._map ??
-        (leafletLayer as any)._map;
-      if (!map) return;
-
-      L.popup({ maxWidth: 380, maxHeight: 350, className: 'posm-popup' })
-        .setLatLng(latlng)
-        .setContent(html)
-        .openOn(map);
-
-      // Wire gear button after popup is in DOM (same technique as vanilla JS)
-      setTimeout(() => {
-        const btn = document.querySelector(
-          `.popup-config-btn[data-layer="${layerName}"]`
-        ) as HTMLElement | null;
-        if (btn) {
-          btn.addEventListener('click', (ev) => {
-            ev.stopPropagation();
-            openPopupFieldConfig(layerName, props);
-          });
-        }
-      }, 50);
-    });
+    bindPopupToFeature(feature, sublayer, leafletLayer, layerName);
   });
 }
 

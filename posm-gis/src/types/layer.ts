@@ -18,6 +18,7 @@ export interface LayerConfig {
   labelField: string | null;
   fields: string[];
   featureCount: number;
+  totalFeatureCount: number;
   symbology: import('./symbology').SymbologyConfig | null;
   activeFilters: FilterDef[];
   filterCombineMode: 'AND' | 'OR';
