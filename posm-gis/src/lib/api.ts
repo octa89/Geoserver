@@ -8,6 +8,21 @@
 import type { WorkspaceConfig } from '../types/session';
 import type { ShareSnapshot } from '../types/share';
 
+// Inline types to avoid circular dependency with auth.ts
+interface AppUser {
+  username: string;
+  displayName: string;
+  city: string;
+  groups: string[];
+  role: 'admin' | 'user';
+}
+
+interface AppGroup {
+  id: string;
+  label: string;
+  workspaces: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
@@ -157,5 +172,108 @@ export async function loadShareSnapshot(
   } catch (err) {
     console.warn('[api] loadShareSnapshot failed:', err);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Auth persistence
+// ---------------------------------------------------------------------------
+
+export { USE_REMOTE };
+
+/**
+ * Load users and groups.
+ * Dev: localStorage. Prod: GET /api/auth/data.
+ */
+export async function loadAuthData(): Promise<{ users: AppUser[]; groups: AppGroup[] }> {
+  if (!USE_REMOTE) {
+    const users = JSON.parse(localStorage.getItem('posm_users') || '[]');
+    const groups = JSON.parse(localStorage.getItem('posm_groups') || '[]');
+    return { users, groups };
+  }
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/data`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    return await resp.json();
+  } catch (err) {
+    console.warn('[api] loadAuthData failed:', err);
+    // Fallback to localStorage cache
+    const users = JSON.parse(localStorage.getItem('posm_users') || '[]');
+    const groups = JSON.parse(localStorage.getItem('posm_groups') || '[]');
+    return { users, groups };
+  }
+}
+
+/**
+ * Save users, groups, and/or passwords.
+ * Dev: localStorage. Prod: POST /api/auth/data.
+ */
+export async function saveAuthData(payload: {
+  users?: AppUser[];
+  groups?: AppGroup[];
+  passwords?: Record<string, string>;
+}): Promise<void> {
+  if (!USE_REMOTE) {
+    if (payload.users) localStorage.setItem('posm_users', JSON.stringify(payload.users));
+    if (payload.groups) localStorage.setItem('posm_groups', JSON.stringify(payload.groups));
+    if (payload.passwords) localStorage.setItem('posm_passwords', JSON.stringify(payload.passwords));
+    return;
+  }
+
+  const resp = await fetch(`${API_BASE}/api/auth/data`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!resp.ok) {
+    const detail = await resp.text();
+    console.warn('[api] saveAuthData failed:', resp.status, detail);
+    throw new Error(`saveAuthData HTTP ${resp.status}`);
+  }
+}
+
+/**
+ * Validate login credentials server-side.
+ * Dev: not used. Prod: POST /api/auth/login.
+ */
+export async function remoteLogin(
+  username: string,
+  passwordHash: string
+): Promise<AppUser | null> {
+  try {
+    const resp = await fetch(`${API_BASE}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, passwordHash }),
+    });
+
+    if (resp.status === 401) return null;
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    const data = await resp.json();
+    return data.user as AppUser;
+  } catch (err) {
+    console.warn('[api] remoteLogin failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Seed default admin in DynamoDB if empty.
+ * Dev: no-op. Prod: POST /api/auth/init.
+ */
+export async function initAuthRemote(defaultPasswordHash: string): Promise<void> {
+  if (!USE_REMOTE) return;
+
+  try {
+    await fetch(`${API_BASE}/api/auth/init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ defaultPasswordHash }),
+    });
+  } catch (err) {
+    console.warn('[api] initAuthRemote failed:', err);
   }
 }

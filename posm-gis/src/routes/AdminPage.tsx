@@ -6,11 +6,13 @@ import {
   getGroups,
   setGroups,
   getCurrentUser,
+  login,
   logout,
   setUserPassword,
   removeUserPassword,
 } from '../config/auth';
 import type { AppUser, AppGroup } from '../config/auth';
+import { discoverAllWorkspaces } from '../lib/geoserver';
 
 // ---- Style constants ----
 const BG_MAIN = '#0a0a1a';
@@ -73,6 +75,7 @@ const tdStyle = (alt: boolean): React.CSSProperties => ({
 const blankUser = (): Omit<AppUser, 'username'> & { username: string; password: string } => ({
   username: '',
   displayName: '',
+  city: '',
   password: '',
   groups: [],
   role: 'user',
@@ -85,6 +88,7 @@ const blankUser = (): Omit<AppUser, 'username'> & { username: string; password: 
 interface UserFormState {
   username: string;
   displayName: string;
+  city: string;
   password: string;
   groups: string[];
   role: 'admin' | 'user';
@@ -121,6 +125,7 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
     setForm({
       username: user.username,
       displayName: user.displayName,
+      city: user.city ?? '',
       password: '',
       groups: [...user.groups],
       role: user.role,
@@ -164,13 +169,14 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
       const updatedUser: AppUser = {
         username: form.username.trim(),
         displayName: form.displayName.trim(),
+        city: form.city.trim(),
         groups: form.groups,
         role: form.role,
       };
 
       if (isAdding) {
         await setUserPassword(updatedUser.username, form.password);
-        setUsers([...existingUsers, updatedUser]);
+        await setUsers([...existingUsers, updatedUser]);
       } else {
         // editing
         const updated = existingUsers.map(u =>
@@ -179,7 +185,7 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
         if (form.password) {
           await setUserPassword(updatedUser.username, form.password);
         }
-        setUsers(updated);
+        await setUsers(updated);
       }
 
       refresh();
@@ -191,11 +197,11 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
     }
   }
 
-  function handleDelete(username: string) {
+  async function handleDelete(username: string) {
     if (username === currentUsername) return; // should not be reachable
     const updated = getUsers().filter(u => u.username !== username);
-    removeUserPassword(username);
-    setUsers(updated);
+    await removeUserPassword(username);
+    await setUsers(updated);
     refresh();
     setConfirmDelete(null);
   }
@@ -220,6 +226,7 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
             <tr>
               <th style={thStyle}>Username</th>
               <th style={thStyle}>Display Name</th>
+              <th style={thStyle}>City/Customer</th>
               <th style={thStyle}>Role</th>
               <th style={thStyle}>Groups</th>
               <th style={thStyle}>Actions</th>
@@ -239,6 +246,9 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
                     )}
                   </td>
                   <td style={tdStyle(i % 2 === 1)}>{u.displayName}</td>
+                  <td style={tdStyle(i % 2 === 1)}>
+                    <span style={{ fontSize: 12, color: TEXT_MUTED }}>{u.city || '—'}</span>
+                  </td>
                   <td style={tdStyle(i % 2 === 1)}>
                     <span style={{
                       fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
@@ -321,6 +331,15 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <span style={{ fontSize: 12, color: TEXT_MUTED }}>City/Customer</span>
+              <input
+                style={inputStyle}
+                value={form.city}
+                onChange={e => setForm(p => ({ ...p, city: e.target.value }))}
+                placeholder="e.g. Miami"
+              />
+            </label>
+            <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               <span style={{ fontSize: 12, color: TEXT_MUTED }}>
                 Password {showAddForm ? '*' : '(leave blank to keep current)'}
               </span>
@@ -392,14 +411,14 @@ function UsersSection({ currentUsername, allGroups }: UsersSectionProps) {
 interface GroupFormState {
   id: string;
   label: string;
-  workspacesRaw: string;
+  selectedWorkspaces: string[];
   allAccess: boolean;
 }
 
 const blankGroupForm = (): GroupFormState => ({
   id: '',
   label: '',
-  workspacesRaw: '',
+  selectedWorkspaces: [],
   allAccess: false,
 });
 
@@ -409,7 +428,7 @@ function groupToForm(g: AppGroup): GroupFormState {
     id: g.id,
     label: g.label,
     allAccess: isAll,
-    workspacesRaw: isAll ? '' : g.workspaces.join(', '),
+    selectedWorkspaces: isAll ? [] : [...g.workspaces],
   };
 }
 
@@ -420,10 +439,21 @@ function GroupsSection() {
   const [form, setForm] = useState<GroupFormState>(blankGroupForm());
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [availableWorkspaces, setAvailableWorkspaces] = useState<string[]>([]);
+  const [wsLoading, setWsLoading] = useState(false);
 
   const refresh = useCallback(() => setLocalGroups(getGroups()), []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // Fetch available workspaces from GeoServer
+  useEffect(() => {
+    setWsLoading(true);
+    discoverAllWorkspaces()
+      .then(ws => setAvailableWorkspaces(ws))
+      .catch(() => setAvailableWorkspaces([]))
+      .finally(() => setWsLoading(false));
+  }, []);
 
   function openAdd() {
     setEditingId(null);
@@ -446,7 +476,7 @@ function GroupsSection() {
     setError('');
   }
 
-  function handleSave() {
+  async function handleSave() {
     setError('');
     if (!form.id.trim()) { setError('Group ID is required.'); return; }
     if (!form.label.trim()) { setError('Label is required.'); return; }
@@ -461,7 +491,7 @@ function GroupsSection() {
 
     const workspaces: string[] = form.allAccess
       ? ['__ALL__']
-      : form.workspacesRaw.split(',').map(w => w.trim()).filter(Boolean);
+      : form.selectedWorkspaces;
 
     const updatedGroup: AppGroup = {
       id: form.id.trim(),
@@ -470,17 +500,17 @@ function GroupsSection() {
     };
 
     if (isAdding) {
-      setGroups([...existing, updatedGroup]);
+      await setGroups([...existing, updatedGroup]);
     } else {
-      setGroups(existing.map(g => g.id === editingId ? updatedGroup : g));
+      await setGroups(existing.map(g => g.id === editingId ? updatedGroup : g));
     }
 
     refresh();
     cancelForm();
   }
 
-  function handleDelete(id: string) {
-    setGroups(getGroups().filter(g => g.id !== id));
+  async function handleDelete(id: string) {
+    await setGroups(getGroups().filter(g => g.id !== id));
     refresh();
     setConfirmDelete(null);
   }
@@ -590,7 +620,7 @@ function GroupsSection() {
             </label>
           </div>
 
-          {/* Workspace input */}
+          {/* Workspace selection */}
           <div style={{ marginTop: 14 }}>
             <span style={{ fontSize: 12, color: TEXT_MUTED, display: 'block', marginBottom: 8 }}>Workspaces</span>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 10, fontSize: 13, color: TEXT_PRIMARY }}>
@@ -603,15 +633,32 @@ function GroupsSection() {
               <span>__ALL__ (grant access to all workspaces)</span>
             </label>
             {!form.allAccess && (
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: TEXT_MUTED }}>Workspace names (comma-separated)</span>
-                <input
-                  style={inputStyle}
-                  value={form.workspacesRaw}
-                  onChange={e => setForm(p => ({ ...p, workspacesRaw: e.target.value }))}
-                  placeholder="e.g. posm_ws1, posm_ws2"
-                />
-              </label>
+              <div>
+                {wsLoading ? (
+                  <span style={{ fontSize: 12, color: TEXT_MUTED }}>Loading workspaces...</span>
+                ) : availableWorkspaces.length === 0 ? (
+                  <span style={{ fontSize: 12, color: TEXT_MUTED }}>No workspaces found on GeoServer.</span>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                    {availableWorkspaces.map(ws => (
+                      <label key={ws} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13, color: TEXT_PRIMARY }}>
+                        <input
+                          type="checkbox"
+                          checked={form.selectedWorkspaces.includes(ws)}
+                          onChange={() => setForm(p => ({
+                            ...p,
+                            selectedWorkspaces: p.selectedWorkspaces.includes(ws)
+                              ? p.selectedWorkspaces.filter(w => w !== ws)
+                              : [...p.selectedWorkspaces, ws],
+                          }))}
+                          style={{ accentColor: ACCENT }}
+                        />
+                        <span>{ws}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -637,27 +684,133 @@ function GroupsSection() {
 
 export function AdminPage() {
   const navigate = useNavigate();
-  const currentUser = getCurrentUser();
+  const [adminUser, setAdminUser] = useState<AppUser | null>(() => {
+    const cur = getCurrentUser();
+    return cur && cur.role === 'admin' ? cur : null;
+  });
   const [allGroups, setAllGroups] = useState<AppGroup[]>([]);
+
+  // Admin login form state
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loggingIn, setLoggingIn] = useState(false);
 
   // Refresh group list so UsersSection always has the latest
   useEffect(() => {
     setAllGroups(getGroups());
   }, []);
 
-  // Guard: if not admin, redirect
-  useEffect(() => {
-    if (!currentUser || currentUser.role !== 'admin') {
-      navigate('/map', { replace: true });
+  async function handleAdminLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    setLoggingIn(true);
+    try {
+      const user = await login(username, password);
+      if (!user) {
+        setError('Invalid username or password');
+      } else if (user.role !== 'admin') {
+        setError('Admin access required');
+        logout();
+      } else {
+        setAdminUser(user);
+      }
+    } catch {
+      setError('Login failed');
+    } finally {
+      setLoggingIn(false);
     }
-  }, [currentUser, navigate]);
+  }
 
   function handleLogout() {
     logout();
+    setAdminUser(null);
     navigate('/login', { replace: true });
   }
 
-  if (!currentUser || currentUser.role !== 'admin') return null;
+  // Show admin login gate if not authenticated as admin
+  if (!adminUser) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: BG_MAIN,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontFamily: "'Segoe UI', 'Inter', sans-serif",
+      }}>
+        <div style={{
+          background: BG_CARD,
+          border: `1px solid ${BORDER}`,
+          borderRadius: 12,
+          padding: '36px 32px',
+          width: 340,
+        }}>
+          <h2 style={{ color: ACCENT, margin: '0 0 4px', fontSize: 20, fontWeight: 800, letterSpacing: '0.04em' }}>
+            Admin Login
+          </h2>
+          <p style={{ color: TEXT_MUTED, fontSize: 13, margin: '0 0 20px' }}>
+            Sign in with an admin account to manage users
+          </p>
+          <form onSubmit={handleAdminLogin}>
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', fontSize: 12, color: TEXT_MUTED, marginBottom: 4 }}>Username</label>
+              <input
+                style={inputStyle}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Admin username"
+                autoFocus
+                required
+              />
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, color: TEXT_MUTED, marginBottom: 4 }}>Password</label>
+              <input
+                style={inputStyle}
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                required
+              />
+            </div>
+            {error && (
+              <div style={{ color: DANGER, fontSize: 13, marginBottom: 12 }}>{error}</div>
+            )}
+            <button
+              type="submit"
+              disabled={loggingIn}
+              style={{
+                ...btnStyle('primary'),
+                width: '100%',
+                padding: '10px',
+                fontSize: 14,
+                opacity: loggingIn ? 0.6 : 1,
+              }}
+            >
+              {loggingIn ? 'Signing in...' : 'Sign In'}
+            </button>
+          </form>
+          <button
+            type="button"
+            onClick={() => navigate('/login')}
+            style={{
+              ...btnStyle('ghost'),
+              width: '100%',
+              marginTop: 12,
+              padding: '8px',
+              color: TEXT_MUTED,
+              border: `1px solid ${BORDER}`,
+              borderRadius: 6,
+            }}
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{
@@ -693,7 +846,7 @@ export function AdminPage() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span style={{ fontSize: 13, color: TEXT_MUTED }}>
-            Signed in as <strong style={{ color: TEXT_PRIMARY }}>{currentUser.displayName}</strong>
+            Signed in as <strong style={{ color: TEXT_PRIMARY }}>{adminUser.displayName}</strong>
           </span>
           <button style={{ ...btnStyle('danger'), opacity: 0.9 }} onClick={handleLogout}>
             Logout
@@ -710,7 +863,7 @@ export function AdminPage() {
           alignItems: 'start',
         }}>
           <UsersSection
-            currentUsername={currentUser.username}
+            currentUsername={adminUser.username}
             allGroups={allGroups}
           />
           <GroupsSection />

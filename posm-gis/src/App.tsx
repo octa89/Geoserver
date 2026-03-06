@@ -40,14 +40,7 @@ export default function App() {
           path="/map"
           element={user ? <MapPage user={user} /> : <Navigate to="/login" replace />}
         />
-        <Route
-          path="/admin"
-          element={
-            user && user.role === 'admin'
-              ? <AdminPage />
-              : <Navigate to={user ? '/map' : '/login'} replace />
-          }
-        />
+        <Route path="/admin" element={<AdminPage />} />
         <Route
           path="/"
           element={user ? <Navigate to="/map" replace /> : <Navigate to="/login" replace />}

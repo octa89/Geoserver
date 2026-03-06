@@ -238,6 +238,97 @@ export function applySymbology(
   }
 }
 
+/**
+ * Re-apply colors from an already-configured SymbologyConfig to the map.
+ * Unlike applySymbology, this does NOT recompute colors — it uses exactly
+ * the colors in the provided config (e.g. after the user edits them in the legend).
+ */
+export function recolorSymbology(
+  leafletLayer: L.GeoJSON,
+  geojson: GeoJSON.FeatureCollection,
+  geomType: GeomType,
+  pointSymbol: string,
+  config: SymbologyConfig
+): void {
+  const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
+
+  if (config.mode === 'unique') {
+    const { field, valueColorMap, groupByYear } = config;
+    const getColor = (feature: GeoJSON.Feature): string => {
+      let raw = feature.properties?.[field];
+      if (raw === null || raw === undefined) raw = '';
+      const key = groupByYear ? (extractYear(raw) ?? String(raw)) : String(raw);
+      return valueColorMap[key] ?? '#888888';
+    };
+
+    if (isPoint) {
+      rebuildPointLayerWithColors(leafletLayer, geojson, pointSymbol, getColor);
+    } else {
+      leafletLayer.eachLayer((sublayer) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
+        if (!feature) return;
+        applyStyleToLayer(sublayer, getColor(feature), geomType, pointSymbol);
+      });
+    }
+  } else if (config.mode === 'graduated') {
+    const { field, breaks, colors } = config;
+    const getColor = (feature: GeoJSON.Feature): string => {
+      const val = Number(feature.properties?.[field]);
+      if (isNaN(val)) return '#888888';
+      for (let i = 0; i < colors.length; i++) {
+        if (val <= (breaks[i + 1] ?? Infinity)) return colors[i];
+      }
+      return colors[colors.length - 1] ?? '#888888';
+    };
+
+    if (isPoint) {
+      rebuildPointLayerWithColors(leafletLayer, geojson, pointSymbol, getColor);
+    } else {
+      leafletLayer.eachLayer((sublayer) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
+        if (!feature) return;
+        applyStyleToLayer(sublayer, getColor(feature), geomType, pointSymbol);
+      });
+    }
+  } else if (config.mode === 'rules') {
+    const { rules, defaultColor } = config;
+    const getColor = (feature: GeoJSON.Feature): string => {
+      for (const rule of rules) {
+        const val = feature.properties?.[rule.field];
+        const strVal = val === null || val === undefined ? '' : String(val);
+        let match = false;
+        switch (rule.operator) {
+          case '=': match = strVal === rule.value; break;
+          case '!=': match = strVal !== rule.value; break;
+          case '>': match = Number(val) > Number(rule.value); break;
+          case '<': match = Number(val) < Number(rule.value); break;
+          case '>=': match = Number(val) >= Number(rule.value); break;
+          case '<=': match = Number(val) <= Number(rule.value); break;
+          case 'LIKE': match = strVal.includes(rule.value); break;
+          case 'IS NULL': match = val === null || val === undefined || strVal === ''; break;
+          case 'IS NOT NULL': match = val !== null && val !== undefined && strVal !== ''; break;
+          default: break;
+        }
+        if (match) return rule.color;
+      }
+      return defaultColor;
+    };
+
+    if (isPoint) {
+      rebuildPointLayerWithColors(leafletLayer, geojson, pointSymbol, getColor);
+    } else {
+      leafletLayer.eachLayer((sublayer) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const feature = (sublayer as any).feature as GeoJSON.Feature | undefined;
+        if (!feature) return;
+        applyStyleToLayer(sublayer, getColor(feature), geomType, pointSymbol);
+      });
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // extractYear  (helper)
 // ---------------------------------------------------------------------------

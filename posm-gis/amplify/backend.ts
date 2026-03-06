@@ -78,9 +78,26 @@ const shareFn = new nodejs.NodejsFunction(stack, 'ShareHandler', {
   },
 });
 
+const authFn = new nodejs.NodejsFunction(stack, 'AuthHandler', {
+  functionName: 'posm-auth-handler',
+  entry: path.join(__dirname, 'functions', 'auth-handler', 'handler.ts'),
+  handler: 'handler',
+  runtime: lambda.Runtime.NODEJS_20_X,
+  timeout: Duration.seconds(10),
+  memorySize: 256,
+  environment: {
+    TABLE_NAME: table.tableName,
+  },
+  bundling: {
+    minify: true,
+    sourceMap: false,
+  },
+});
+
 // Grant DynamoDB access
 table.grantReadWriteData(configFn);
 table.grantReadWriteData(shareFn);
+table.grantReadWriteData(authFn);
 
 // ---------------------------------------------------------------------------
 // HTTP API Gateway
@@ -88,6 +105,7 @@ table.grantReadWriteData(shareFn);
 
 const configIntegration = new HttpLambdaIntegration('ConfigIntegration', configFn);
 const shareIntegration = new HttpLambdaIntegration('ShareIntegration', shareFn);
+const authIntegration = new HttpLambdaIntegration('AuthIntegration', authFn);
 
 const httpApi = new HttpApi(stack, 'PosmHttpApi', {
   apiName: 'posm-gis-api',
@@ -121,6 +139,25 @@ httpApi.addRoutes({
   path: '/api/share/{shareId}',
   methods: [HttpMethod.GET],
   integration: shareIntegration,
+});
+
+// Auth routes
+httpApi.addRoutes({
+  path: '/api/auth/data',
+  methods: [HttpMethod.GET, HttpMethod.POST],
+  integration: authIntegration,
+});
+
+httpApi.addRoutes({
+  path: '/api/auth/login',
+  methods: [HttpMethod.POST],
+  integration: authIntegration,
+});
+
+httpApi.addRoutes({
+  path: '/api/auth/init',
+  methods: [HttpMethod.POST],
+  integration: authIntegration,
 });
 
 // ---------------------------------------------------------------------------

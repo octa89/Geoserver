@@ -1,6 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useState, useCallback } from 'react';
 import { useStore } from '../../store';
-import { resetSymbology, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { recolorSymbology, resetSymbology, refreshClusterAfterSymbology } from '../../lib/symbology';
 import { getLayerRefs } from '../../store/leafletRegistry';
 import type {
   SymbologyConfig,
@@ -101,19 +101,6 @@ function ClickableSwatch({ color, layerName, size = 12 }: { color: string; layer
   );
 }
 
-function LegendEntry({ color, label, size }: { color: string; label: string; size?: number }) {
-  return (
-    <div
-      className="legend-entry"
-      style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#ccc', marginBottom: 2 }}
-    >
-      <Swatch color={color} size={size} />
-      <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {label}
-      </span>
-    </div>
-  );
-}
 
 function ClickableLegendEntry({ color, label, layerName, size }: { color: string; label: string; layerName: string; size?: number }) {
   return (
@@ -130,21 +117,102 @@ function ClickableLegendEntry({ color, label, layerName, size }: { color: string
 }
 
 // ---------------------------------------------------------------------------
+// Clickable symbology swatch — updates a specific color in the symbology config
+// ---------------------------------------------------------------------------
+
+function ClickableSymSwatch({
+  color,
+  onColorChange,
+  size = 12,
+}: {
+  color: string;
+  onColorChange: (newColor: string) => void;
+  size?: number;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+      <span
+        className="legend-swatch"
+        onClick={() => inputRef.current?.click()}
+        title="Click to change color"
+        style={{
+          display: 'inline-block',
+          width: size,
+          height: size,
+          borderRadius: 2,
+          background: color,
+          border: '1px solid rgba(255,255,255,0.15)',
+          cursor: 'pointer',
+          transition: 'box-shadow 0.15s',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 0 0 2px #42d4f4'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
+      />
+      <input
+        ref={inputRef}
+        type="color"
+        value={color}
+        onChange={(e) => onColorChange(e.target.value)}
+        style={{
+          position: 'absolute',
+          top: 0, left: 0,
+          width: 0, height: 0,
+          opacity: 0,
+          overflow: 'hidden',
+          border: 'none',
+          padding: 0,
+        }}
+        tabIndex={-1}
+      />
+    </span>
+  );
+}
+
+/** Apply a modified symbology config to the store + Leaflet map */
+function commitSymbology(layerName: string, newSym: SymbologyConfig) {
+  const setLayerSymbology = useStore.getState().setLayerSymbology;
+  setLayerSymbology(layerName, newSym);
+
+  const layer = useStore.getState().layers[layerName];
+  const refs = getLayerRefs(layerName);
+  if (!refs || !layer) return;
+
+  recolorSymbology(refs.leafletLayer, refs.geojson, layer.geomType, layer.pointSymbol, newSym);
+  refreshClusterAfterSymbology(refs);
+}
+
+// ---------------------------------------------------------------------------
 // Per-mode legend renderers
 // ---------------------------------------------------------------------------
 
-function UniqueValuesLegend({ sym }: { sym: UniqueSymbology }) {
+function UniqueValuesLegend({ sym, onUpdate }: { sym: UniqueSymbology; onUpdate: (s: SymbologyConfig) => void }) {
   const entries = Object.entries(sym.valueColorMap);
   return (
     <>
       {entries.map(([val, color]) => (
-        <LegendEntry key={val} color={color} label={val || '(empty)'} />
+        <div
+          key={val}
+          className="legend-entry"
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#ccc', marginBottom: 2 }}
+        >
+          <ClickableSymSwatch
+            color={color}
+            onColorChange={(newColor) => {
+              onUpdate({ ...sym, valueColorMap: { ...sym.valueColorMap, [val]: newColor } });
+            }}
+          />
+          <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {val || '(empty)'}
+          </span>
+        </div>
       ))}
     </>
   );
 }
 
-function GraduatedLegend({ sym }: { sym: GraduatedSymbology }) {
+function GraduatedLegend({ sym, onUpdate }: { sym: GraduatedSymbology; onUpdate: (s: SymbologyConfig) => void }) {
   const { breaks, colors } = sym;
   if (!breaks.length || !colors.length) return null;
 
@@ -154,7 +222,25 @@ function GraduatedLegend({ sym }: { sym: GraduatedSymbology }) {
         const lo = breaks[i] !== undefined ? breaks[i].toLocaleString(undefined, { maximumFractionDigits: 2 }) : '?';
         const hi = breaks[i + 1] !== undefined ? breaks[i + 1].toLocaleString(undefined, { maximumFractionDigits: 2 }) : '?';
         const label = `${lo} - ${hi}`;
-        return <LegendEntry key={i} color={color} label={label} />;
+        return (
+          <div
+            key={i}
+            className="legend-entry"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#ccc', marginBottom: 2 }}
+          >
+            <ClickableSymSwatch
+              color={color}
+              onColorChange={(newColor) => {
+                const newColors = [...sym.colors];
+                newColors[i] = newColor;
+                onUpdate({ ...sym, colors: newColors });
+              }}
+            />
+            <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {label}
+            </span>
+          </div>
+        );
       })}
     </>
   );
@@ -199,7 +285,7 @@ function ProportionalLegend({ sym }: { sym: ProportionalSymbology }) {
   );
 }
 
-function RulesLegend({ sym }: { sym: RuleSymbology }) {
+function RulesLegend({ sym, onUpdate }: { sym: RuleSymbology; onUpdate: (s: SymbologyConfig) => void }) {
   return (
     <>
       {sym.rules.map((rule, i) => {
@@ -207,23 +293,51 @@ function RulesLegend({ sym }: { sym: RuleSymbology }) {
         const label = isNull
           ? `${rule.field} ${rule.operator}`
           : `${rule.field} ${rule.operator} ${rule.value}`;
-        return <LegendEntry key={i} color={rule.color} label={label} />;
+        return (
+          <div
+            key={i}
+            className="legend-entry"
+            style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#ccc', marginBottom: 2 }}
+          >
+            <ClickableSymSwatch
+              color={rule.color}
+              onColorChange={(newColor) => {
+                const newRules = sym.rules.map((r, j) => j === i ? { ...r, color: newColor } : r);
+                onUpdate({ ...sym, rules: newRules });
+              }}
+            />
+            <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {label}
+            </span>
+          </div>
+        );
       })}
-      <LegendEntry color={sym.defaultColor} label="(default)" />
+      <div
+        className="legend-entry"
+        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 10, color: '#ccc', marginBottom: 2 }}
+      >
+        <ClickableSymSwatch
+          color={sym.defaultColor}
+          onColorChange={(newColor) => {
+            onUpdate({ ...sym, defaultColor: newColor });
+          }}
+        />
+        <span className="legend-label">(default)</span>
+      </div>
     </>
   );
 }
 
-function SymbologyLegend({ sym }: { sym: SymbologyConfig }) {
+function SymbologyLegend({ sym, onUpdate }: { sym: SymbologyConfig; onUpdate: (s: SymbologyConfig) => void }) {
   switch (sym.mode) {
     case 'unique':
-      return <UniqueValuesLegend sym={sym} />;
+      return <UniqueValuesLegend sym={sym} onUpdate={onUpdate} />;
     case 'graduated':
-      return <GraduatedLegend sym={sym} />;
+      return <GraduatedLegend sym={sym} onUpdate={onUpdate} />;
     case 'proportional':
       return <ProportionalLegend sym={sym} />;
     case 'rules':
-      return <RulesLegend sym={sym} />;
+      return <RulesLegend sym={sym} onUpdate={onUpdate} />;
     default:
       return null;
   }
@@ -262,11 +376,100 @@ function RampStrip({ ramp }: { ramp: string }) {
  * When no symbology is active (single symbol), the color swatch is clickable
  * to change the layer's base color.
  */
+/**
+ * Per-layer legend block with pending color edits and an OK button.
+ */
+function LayerLegendBlock({ name }: { name: string }) {
+  const layer = useStore((s) => s.layers[name]);
+  const sym = layer?.symbology ?? null;
+
+  // Pending symbology: holds user color edits before they're applied to the map
+  const [pending, setPending] = useState<SymbologyConfig | null>(null);
+  const hasPending = pending !== null;
+
+  // The symbology to render (pending edits take priority over store)
+  const displaySym = pending ?? sym;
+
+  const handleApply = useCallback(() => {
+    if (!pending) return;
+    commitSymbology(name, pending);
+    setPending(null);
+  }, [pending, name]);
+
+  // Reset pending when store symbology changes externally (e.g. new symbology applied from panel)
+  const symRef = useRef(sym);
+  if (sym !== symRef.current) {
+    symRef.current = sym;
+    if (pending) setPending(null);
+  }
+
+  if (!layer) return null;
+
+  return (
+    <div className="legend-layer-block">
+      <div
+        className="legend-layer-title"
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          color: '#e0e0e0',
+          marginBottom: 4,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}
+      >
+        {displaySym?.mode === 'graduated' ? (
+          <RampStrip ramp={(displaySym as GraduatedSymbology).ramp} />
+        ) : !displaySym ? (
+          <ClickableSwatch color={layer.color} layerName={name} size={10} />
+        ) : (
+          <Swatch color={layer.color} size={10} />
+        )}
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {layer.label}
+        </span>
+        {displaySym && (
+          <span style={{ fontSize: 9, color: '#888', marginLeft: 'auto', flexShrink: 0 }}>
+            {displaySym.mode}
+          </span>
+        )}
+      </div>
+
+      <div style={{ paddingLeft: 4 }}>
+        {displaySym ? (
+          <SymbologyLegend sym={displaySym} onUpdate={setPending} />
+        ) : (
+          <ClickableLegendEntry color={layer.color} label={layer.label} layerName={name} />
+        )}
+      </div>
+
+      {hasPending && (
+        <button
+          onClick={handleApply}
+          style={{
+            marginTop: 4,
+            padding: '3px 12px',
+            fontSize: 10,
+            fontWeight: 700,
+            background: '#42d4f4',
+            color: '#0a0a1a',
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer',
+          }}
+        >
+          OK
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function LegendPanel() {
   const layers = useStore((s) => s.layers);
   const layerOrder = useStore((s) => s.layerOrder);
 
-  // Only show visible layers, in display order (reversed so top layer is first)
   const visibleLayers = [...layerOrder]
     .reverse()
     .filter((name) => layers[name]?.visible);
@@ -281,52 +484,9 @@ export function LegendPanel() {
 
   return (
     <div className="legend-panel" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {visibleLayers.map((name) => {
-        const layer = layers[name];
-        const sym = layer.symbology;
-
-        return (
-          <div key={name} className="legend-layer-block">
-            <div
-              className="legend-layer-title"
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: '#e0e0e0',
-                marginBottom: 4,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              {/* Swatch showing mode type or default color */}
-              {sym?.mode === 'graduated' ? (
-                <RampStrip ramp={(sym as GraduatedSymbology).ramp} />
-              ) : !sym ? (
-                <ClickableSwatch color={layer.color} layerName={name} size={10} />
-              ) : (
-                <Swatch color={layer.color} size={10} />
-              )}
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {layer.label}
-              </span>
-              {sym && (
-                <span style={{ fontSize: 9, color: '#888', marginLeft: 'auto', flexShrink: 0 }}>
-                  {sym.mode}
-                </span>
-              )}
-            </div>
-
-            <div style={{ paddingLeft: 4 }}>
-              {sym ? (
-                <SymbologyLegend sym={sym} />
-              ) : (
-                <ClickableLegendEntry color={layer.color} label={layer.label} layerName={name} />
-              )}
-            </div>
-          </div>
-        );
-      })}
+      {visibleLayers.map((name) => (
+        <LayerLegendBlock key={name} name={name} />
+      ))}
     </div>
   );
 }

@@ -1,13 +1,23 @@
 /**
- * Local auth system for development.
- * In production this will be replaced by AWS Cognito via Amplify Auth.
+ * Auth system with dual-mode persistence:
+ * - Dev (no VITE_DYNAMO_API_URL): localStorage only
+ * - Prod (VITE_DYNAMO_API_URL set): DynamoDB via Lambda, localStorage as cache
  *
- * For now: stores users in localStorage, sessions in sessionStorage.
+ * Sessions (current logged-in user) always use sessionStorage.
  */
+
+import {
+  USE_REMOTE,
+  loadAuthData,
+  saveAuthData,
+  remoteLogin,
+  initAuthRemote,
+} from '../lib/api';
 
 export interface AppUser {
   username: string;
   displayName: string;
+  city: string;
   groups: string[];
   role: 'admin' | 'user';
 }
@@ -22,12 +32,14 @@ const USERS_KEY = 'posm_users';
 const GROUPS_KEY = 'posm_groups';
 const SESSION_KEY = 'posm_current_user';
 const WORKSPACE_KEY = 'posm_selected_workspace';
+const PASSWORD_STORE_KEY = 'posm_passwords';
 
-// ---- Default admin user (password checked client-side for dev) ----
+// ---- Default data ----
 const DEFAULT_USERS: AppUser[] = [
   {
     username: 'admin',
     displayName: 'Administrator',
+    city: '',
     groups: ['all_access'],
     role: 'admin',
   },
@@ -41,8 +53,9 @@ const DEFAULT_GROUPS: AppGroup[] = [
   },
 ];
 
-// Hashed passwords (SHA-256 hex). For dev only — Cognito handles this in production.
-const PASSWORD_STORE_KEY = 'posm_passwords';
+const DEFAULT_PASSWORD = 'POSMRocksGISCentral2026';
+
+// ---- Password utilities ----
 
 function getPasswordStore(): Record<string, string> {
   const raw = localStorage.getItem(PASSWORD_STORE_KEY);
@@ -63,45 +76,82 @@ export async function hashPassword(password: string): Promise<string> {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Set (or update) a stored password hash for a user. Used by AdminPage. */
+/** Set (or update) a stored password hash for a user. */
 export async function setUserPassword(username: string, password: string): Promise<void> {
   const store = getPasswordStore();
   store[username] = await hashPassword(password);
   setPasswordStore(store);
+
+  if (USE_REMOTE) {
+    try { await saveAuthData({ passwords: store }); } catch (e) {
+      console.warn('[auth] Remote password sync failed:', e);
+    }
+  }
 }
 
-/** Remove the stored password hash for a user. Used by AdminPage on delete. */
-export function removeUserPassword(username: string): void {
+/** Remove the stored password hash for a user. */
+export async function removeUserPassword(username: string): Promise<void> {
   const store = getPasswordStore();
   delete store[username];
   setPasswordStore(store);
+
+  if (USE_REMOTE) {
+    try { await saveAuthData({ passwords: store }); } catch (e) {
+      console.warn('[auth] Remote password sync failed:', e);
+    }
+  }
 }
 
-// ---- Initialize defaults ----
+// ---- Initialize ----
+
 export async function initAuth() {
+  const defaultHash = await hashPassword(DEFAULT_PASSWORD);
+
+  // Always seed localStorage with defaults if empty (works offline / before Lambda deploy)
   if (!localStorage.getItem(USERS_KEY)) {
     localStorage.setItem(USERS_KEY, JSON.stringify(DEFAULT_USERS));
   }
   if (!localStorage.getItem(GROUPS_KEY)) {
     localStorage.setItem(GROUPS_KEY, JSON.stringify(DEFAULT_GROUPS));
   }
-  // Set default admin password if not already set
   const passwords = getPasswordStore();
   if (!passwords['admin']) {
-    passwords['admin'] = await hashPassword('POSMRocksGISCentral2026');
+    passwords['admin'] = defaultHash;
     setPasswordStore(passwords);
+  }
+
+  // In remote mode, also sync with DynamoDB (non-blocking — falls back to localStorage on failure)
+  if (USE_REMOTE) {
+    try {
+      await initAuthRemote(defaultHash);
+      const { users, groups } = await loadAuthData();
+      if (users.length > 0) {
+        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      }
+      if (groups.length > 0) {
+        localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
+      }
+    } catch (err) {
+      console.warn('[auth] Remote auth sync failed, using localStorage:', err);
+    }
   }
 }
 
 // ---- User CRUD ----
+
 export function getUsers(): AppUser[] {
   const raw = localStorage.getItem(USERS_KEY);
   if (!raw) return DEFAULT_USERS;
   try { return JSON.parse(raw); } catch { return DEFAULT_USERS; }
 }
 
-export function setUsers(users: AppUser[]) {
+export async function setUsers(users: AppUser[]): Promise<void> {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  if (USE_REMOTE) {
+    try { await saveAuthData({ users }); } catch (e) {
+      console.warn('[auth] Remote users sync failed:', e);
+    }
+  }
 }
 
 export function getGroups(): AppGroup[] {
@@ -110,12 +160,36 @@ export function getGroups(): AppGroup[] {
   try { return JSON.parse(raw); } catch { return DEFAULT_GROUPS; }
 }
 
-export function setGroups(groups: AppGroup[]) {
+export async function setGroups(groups: AppGroup[]): Promise<void> {
   localStorage.setItem(GROUPS_KEY, JSON.stringify(groups));
+  if (USE_REMOTE) {
+    try { await saveAuthData({ groups }); } catch (e) {
+      console.warn('[auth] Remote groups sync failed:', e);
+    }
+  }
 }
 
 // ---- Login / Logout ----
+
 export async function login(username: string, password: string): Promise<AppUser | null> {
+  const inputHash = await hashPassword(password);
+
+  // Try remote login first if available
+  if (USE_REMOTE) {
+    try {
+      const user = await remoteLogin(username, inputHash);
+      if (user) {
+        sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
+        return user;
+      }
+      // remoteLogin returned null — could be bad credentials OR endpoint not deployed.
+      // Fall through to local validation as fallback.
+    } catch {
+      console.warn('[auth] Remote login failed, falling back to local validation');
+    }
+  }
+
+  // Local validation (primary in dev, fallback in prod if Lambda not deployed)
   const users = getUsers();
   const user = users.find(u => u.username === username);
   if (!user) return null;
@@ -123,8 +197,6 @@ export async function login(username: string, password: string): Promise<AppUser
   const passwords = getPasswordStore();
   const storedHash = passwords[username];
   if (!storedHash) return null;
-
-  const inputHash = await hashPassword(password);
   if (inputHash !== storedHash) return null;
 
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(user));
@@ -143,6 +215,7 @@ export function getCurrentUser(): AppUser | null {
 }
 
 // ---- Workspaces ----
+
 export function getUserWorkspaces(user: AppUser): string[] {
   const groups = getGroups();
   const userGroups = groups.filter(g => user.groups.includes(g.id));

@@ -1,0 +1,12 @@
+[
+  {
+    "source": "/api/geoserver/<*>",
+    "target": "http://18.225.234.98:8080/geoserver/<*>",
+    "status": "200"
+  },
+  {
+    "source": "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json)$)([^.]+$)/>",
+    "target": "/index.html",
+    "status": "200"
+  }
+]
