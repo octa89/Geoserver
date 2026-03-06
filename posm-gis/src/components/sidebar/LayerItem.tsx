@@ -240,6 +240,26 @@ export function LayerItem({ name, mapRef }: LayerItemProps) {
     [name, mapRef, geomType, color, visible, setLayerLabelField]
   );
 
+  // ---- Zoom to layer extent ---------------------------------------------------
+
+  const handleZoomToLayer = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const refs = getLayerRefs(name);
+    if (!refs) return;
+    try {
+      const bounds = refs.leafletLayer.getBounds();
+      if (!bounds.isValid()) return;
+      const ne = bounds.getNorthEast();
+      const sw = bounds.getSouthWest();
+      if (ne.lat === sw.lat && ne.lng === sw.lng) {
+        map.flyTo(bounds.getCenter(), 16, { duration: 0.7 });
+      } else {
+        map.flyToBounds(bounds, { padding: [40, 40], duration: 0.7 });
+      }
+    } catch { /* empty/invalid layer */ }
+  }, [name, mapRef]);
+
   // ---- Render ----------------------------------------------------------------
 
   const darker = darkenColor(color);
@@ -289,6 +309,40 @@ export function LayerItem({ name, mapRef }: LayerItemProps) {
             : `(${featureCount.toLocaleString()})`}
         </span>
       </span>
+
+      {/* Zoom to layer extent */}
+      <button
+        onClick={handleZoomToLayer}
+        title="Zoom to layer extent"
+        disabled={featureCount === 0}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: 0,
+          cursor: featureCount === 0 ? 'not-allowed' : 'pointer',
+          color: '#888',
+          opacity: featureCount === 0 ? 0.4 : 1,
+          flexShrink: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          transition: 'color 0.15s, transform 0.15s',
+        }}
+        onMouseEnter={(e) => {
+          if (featureCount > 0) {
+            e.currentTarget.style.color = '#42d4f4';
+            e.currentTarget.style.transform = 'scale(1.15)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = '#888';
+          e.currentTarget.style.transform = 'scale(1)';
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="10" cy="10" r="7" />
+          <line x1="15" y1="15" x2="21" y2="21" />
+        </svg>
+      </button>
 
       {/* Cluster toggle — points only */}
       {isPoint && (

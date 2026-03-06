@@ -6,6 +6,8 @@ interface WorkspaceModalProps {
   onSelect: (workspaces: string[]) => void;
   /** Pre-filtered list of workspaces the user has access to, or null for admin (discover all). */
   userWorkspaces: string[] | null;
+  /** If provided, the modal can be cancelled (e.g. when switching workspace). */
+  onCancel?: () => void;
 }
 
 /**
@@ -14,7 +16,7 @@ interface WorkspaceModalProps {
  * - Non-admin users with multiple workspaces: shows their assigned workspaces
  * - Users with a single workspace: this modal is never shown (auto-loads)
  */
-export function WorkspaceModal({ isOpen, onSelect, userWorkspaces }: WorkspaceModalProps) {
+export function WorkspaceModal({ isOpen, onSelect, userWorkspaces, onCancel }: WorkspaceModalProps) {
   const [workspaces, setWorkspaces] = useState<string[]>([]);
   const [selected, setSelected] = useState('');
   const [discovering, setDiscovering] = useState(false);
@@ -65,18 +67,23 @@ export function WorkspaceModal({ isOpen, onSelect, userWorkspaces }: WorkspaceMo
   useEffect(() => {
     if (!isOpen) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && workspaces.length > 0) {
-        handleLoadSelected();
+      if (e.key === 'Escape') {
+        if (onCancel) {
+          onCancel();
+        } else if (workspaces.length > 0) {
+          handleLoadSelected();
+        }
       }
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isOpen, workspaces, handleLoadSelected]);
+  }, [isOpen, workspaces, handleLoadSelected, onCancel]);
 
   if (!isOpen) return null;
 
   return (
     <div
+      onClick={onCancel ? () => onCancel() : undefined}
       style={{
         position: 'fixed',
         top: 0, left: 0, right: 0, bottom: 0,
@@ -85,9 +92,11 @@ export function WorkspaceModal({ isOpen, onSelect, userWorkspaces }: WorkspaceMo
         alignItems: 'center',
         justifyContent: 'center',
         zIndex: 10000,
+        cursor: onCancel ? 'pointer' : 'default',
       }}
     >
       <div
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: '#1a1a2e',
           border: '1px solid rgba(66,212,244,0.3)',
@@ -96,6 +105,7 @@ export function WorkspaceModal({ isOpen, onSelect, userWorkspaces }: WorkspaceMo
           width: 420,
           maxWidth: '90vw',
           boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+          cursor: 'default',
         }}
       >
         <h2 style={{
@@ -169,6 +179,24 @@ export function WorkspaceModal({ isOpen, onSelect, userWorkspaces }: WorkspaceMo
             </select>
 
             <div style={{ display: 'flex', gap: 10 }}>
+              {onCancel && (
+                <button
+                  onClick={onCancel}
+                  style={{
+                    flex: 1,
+                    background: 'transparent',
+                    color: '#888',
+                    border: '1px solid #2d2d44',
+                    borderRadius: 6,
+                    padding: '10px 0',
+                    fontSize: 13,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 onClick={handleLoadAll}
                 style={{
