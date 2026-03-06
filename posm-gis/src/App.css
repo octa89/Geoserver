@@ -890,6 +890,11 @@ body {
   .ws-bar {
     padding: 6px 10px !important;
   }
+
+  /* Share legend: raise above mobile browser bottom bar */
+  .share-legend {
+    bottom: 72px !important;
+  }
 }
 
 /* ====================================================================
@@ -917,5 +922,10 @@ body {
 
   .map-legend-control {
     max-width: calc(65vw) !important;
+  }
+
+  .share-legend {
+    bottom: 80px !important;
+    max-width: 280px !important;
   }
 }

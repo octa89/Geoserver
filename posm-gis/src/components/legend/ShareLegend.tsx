@@ -23,19 +23,22 @@ export interface ShareLayerInfo {
 
 interface ShareLegendProps {
   layers: ShareLayerInfo[];
+  hiddenLayers?: Record<string, boolean>;
+  onToggleLayer?: (layerName: string) => void;
 }
 
 // ---------------------------------------------------------------------------
 // ShareLegend — standalone legend for the public share view
 // ---------------------------------------------------------------------------
 
-export function ShareLegend({ layers }: ShareLegendProps) {
+export function ShareLegend({ layers, hiddenLayers = {}, onToggleLayer }: ShareLegendProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   if (layers.length === 0) return null;
 
   return (
     <div
+      className="share-legend"
       style={{
         position: 'absolute',
         bottom: 32,
@@ -95,12 +98,23 @@ export function ShareLegend({ layers }: ShareLegendProps) {
           overflowY: 'auto',
           maxHeight: 'calc(50vh - 50px)',
         }}>
-          {layers.map((layer) => (
-            <div key={layer.name} style={{ marginBottom: 12 }}>
+          {layers.map((layer) => {
+            const isHidden = !!hiddenLayers[layer.name];
+            return (
+            <div key={layer.name} style={{ marginBottom: 12, opacity: isHidden ? 0.4 : 1, transition: 'opacity 0.15s' }}>
               {/* Layer title */}
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
               }}>
+                {onToggleLayer && (
+                  <input
+                    type="checkbox"
+                    checked={!isHidden}
+                    onChange={() => onToggleLayer(layer.name)}
+                    title={isHidden ? 'Show layer' : 'Hide layer'}
+                    style={{ margin: 0, cursor: 'pointer', accentColor: '#42d4f4', flexShrink: 0 }}
+                  />
+                )}
                 <LayerSwatch color={layer.color} geomType={layer.geomType} />
                 <span style={{
                   fontSize: 13, fontWeight: 600, color: '#e8e8e8',
@@ -123,7 +137,8 @@ export function ShareLegend({ layers }: ShareLegendProps) {
                 )}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

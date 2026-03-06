@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.markercluster';
 
 import { fetchLayerGeoJSON } from '../lib/geoserver';
 import { detectGeomType } from '../lib/fieldUtils';
@@ -10,6 +11,8 @@ import { createPointMarker } from '../lib/markers';
 import { darkenColor } from '../lib/colorUtils';
 import { buildCqlFilter } from '../components/filter/filterUtils';
 import { smartSortFields, formatPopupValue, escapeHtml } from '../lib/popupUtils';
+import { applyLabels, computeLabelMinZoom, initLabelMoveListener, removeLabels } from '../lib/labels';
+import type { LabelManager } from '../lib/labels';
 import { BASEMAPS, LAYER_COLORS } from '../config/constants';
 import { loadShareSnapshot } from '../lib/api';
 import { ShareLegend } from '../components/legend/ShareLegend';
@@ -139,16 +142,28 @@ function bindSharePopups(
  * - Shows a detailed floating legend and a top banner with share info.
  * - Read-only: viewer can only pan/zoom.
  */
+const CLUSTER_THRESHOLD = 200;
+
+/** Mutable registry of leaflet layers + label managers per layer name, for toggle */
+interface ShareLayerRefs {
+  leafletLayer: L.GeoJSON;
+  clusterGroup: L.MarkerClusterGroup | null;
+  labelMgr: LabelManager | null;
+  labelMinZoom: number;
+}
+
 export function SharePage() {
   const { shareId } = useParams<{ shareId: string }>();
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const layerRefsMap = useRef<Record<string, ShareLayerRefs>>({});
 
   const [snapshot, setSnapshot] = useState<ShareSnapshot | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [status, setStatus] = useState<string>('Loading share\u2026');
   const [legendLayers, setLegendLayers] = useState<ShareLayerInfo[]>([]);
+  const [hiddenLayers, setHiddenLayers] = useState<Record<string, boolean>>({});
 
   // Load snapshot on mount (async — fetches from API or localStorage)
   useEffect(() => {
@@ -172,6 +187,36 @@ export function SharePage() {
       cancelled = true;
     };
   }, [shareId]);
+
+  // Toggle layer visibility from legend
+  const handleToggleLayer = (layerName: string) => {
+    const map = mapRef.current;
+    const refs = layerRefsMap.current[layerName];
+    if (!map || !refs) return;
+
+    setHiddenLayers((prev) => {
+      const isCurrentlyHidden = !!prev[layerName];
+      // The "display layer" is the cluster group if present, otherwise the raw leaflet layer
+      const displayLayer = refs.clusterGroup ?? refs.leafletLayer;
+      if (isCurrentlyHidden) {
+        // Show layer
+        displayLayer.addTo(map);
+        if (refs.labelMgr) {
+          const zoom = map.getZoom();
+          if (zoom >= refs.labelMinZoom) {
+            refs.labelMgr.layerGroup.addTo(map);
+          }
+        }
+      } else {
+        // Hide layer
+        map.removeLayer(displayLayer);
+        if (refs.labelMgr && map.hasLayer(refs.labelMgr.layerGroup)) {
+          map.removeLayer(refs.labelMgr.layerGroup);
+        }
+      }
+      return { ...prev, [layerName]: !isCurrentlyHidden };
+    });
+  };
 
   // Initialize Leaflet map and load layers once snapshot is available
   useEffect(() => {
@@ -252,13 +297,42 @@ export function SharePage() {
           );
         }
 
-        leafletLayer.addTo(map);
+        // Cluster point layers if saved config had clustering enabled (same threshold as main app)
+        const shouldCluster =
+          isPoint && layerCfg.clustered && geojson.features.length > CLUSTER_THRESHOLD;
+        let clusterGroup: L.MarkerClusterGroup | null = null;
+        if (shouldCluster) {
+          clusterGroup = (L as unknown as { markerClusterGroup: (opts: object) => L.MarkerClusterGroup }).markerClusterGroup({
+            disableClusteringAtZoom: 20,
+            chunkedLoading: true,
+          });
+          clusterGroup.addLayer(leafletLayer);
+          clusterGroup.addTo(map);
+        } else {
+          leafletLayer.addTo(map);
+        }
 
         // Bind read-only popups (no config gear button)
         const shortName = fullName.includes(':')
           ? fullName.split(':')[1]
           : fullName;
         bindSharePopups(leafletLayer, shortName, layerCfg.popupConfig);
+
+        // Apply labels if labelField is saved (same logic as main app)
+        let labelMgr: LabelManager | null = null;
+        let labelMinZoom = 19;
+        if (layerCfg.labelField) {
+          labelMinZoom = computeLabelMinZoom(geojson);
+          labelMgr = applyLabels(map, geojson, geomType, color, layerCfg.labelField);
+          // Hide labels if current zoom is below threshold
+          const currentZoom = map.getZoom();
+          if (currentZoom < labelMinZoom && map.hasLayer(labelMgr.layerGroup)) {
+            map.removeLayer(labelMgr.layerGroup);
+          }
+        }
+
+        // Store refs for toggle
+        layerRefsMap.current[fullName] = { leafletLayer, clusterGroup, labelMgr, labelMinZoom };
 
         collectedLegend.push({
           name: fullName,
@@ -272,13 +346,41 @@ export function SharePage() {
     ).then(() => {
       setLegendLayers([...collectedLegend]);
       setStatus('');
+
+      // Set up label move/zoom listener (same as main app)
+      const cleanupLabels = initLabelMoveListener(map, () => {
+        return Object.entries(layerRefsMap.current)
+          .filter(([, refs]) => refs.labelMgr !== null)
+          .map(([name, refs]) => ({
+            mgr: refs.labelMgr!,
+            minZoom: refs.labelMinZoom,
+            parentVisible: !hiddenLayersRef.current[name],
+          }));
+      });
+
+      // Store cleanup for unmount
+      labelCleanupRef.current = cleanupLabels;
     });
 
     return () => {
+      if (labelCleanupRef.current) labelCleanupRef.current();
+      // Clean up label managers
+      for (const refs of Object.values(layerRefsMap.current)) {
+        if (refs.labelMgr) {
+          removeLabels(map, refs.labelMgr);
+        }
+      }
+      layerRefsMap.current = {};
       map.remove();
       mapRef.current = null;
     };
   }, [snapshot]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep a ref of hiddenLayers so the label listener can access it without stale closures
+  const hiddenLayersRef = useRef(hiddenLayers);
+  hiddenLayersRef.current = hiddenLayers;
+
+  const labelCleanupRef = useRef<(() => void) | null>(null);
 
   // ---- Error state ----------------------------------------------------------
 
@@ -413,7 +515,11 @@ export function SharePage() {
       </div>
 
       {/* Detailed legend panel — bottom-left */}
-      <ShareLegend layers={legendLayers} />
+      <ShareLegend
+        layers={legendLayers}
+        hiddenLayers={hiddenLayers}
+        onToggleLayer={handleToggleLayer}
+      />
     </div>
   );
 }

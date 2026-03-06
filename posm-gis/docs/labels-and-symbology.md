@@ -184,6 +184,40 @@ Labels are the most performance-sensitive feature. Each label is a DOM element (
 
 ---
 
+## Legend Color Editing (Deferred Apply)
+
+**File:** `src/components/legend/LegendPanel.tsx`
+
+The main app legend allows clicking color swatches to change individual symbology colors.
+
+### How It Works
+
+1. `ClickableSymSwatch` renders a visible swatch over a hidden `<input type="color">`
+2. On color change, the `onUpdate` callback is called with a modified copy of the `SymbologyConfig`
+3. The `LayerLegendBlock` component stores pending changes in `useState<SymbologyConfig | null>`
+4. The pending config is used for rendering (so the user sees the new color immediately in the legend)
+5. An **OK** button appears when `pending !== null`
+6. On OK click: `commitSymbology(layerName, pending)` is called, which:
+   - Updates the Zustand store via `setLayerSymbology()`
+   - Calls `recolorSymbology()` to apply exact colors to the Leaflet map
+   - Calls `refreshClusterAfterSymbology()` for clustered point layers
+7. Pending state is cleared
+
+### `recolorSymbology()` vs `applySymbology()`
+
+| Function | Purpose | Recomputes values? | Use case |
+|----------|---------|-------------------|----------|
+| `applySymbology()` | Apply a symbology config from scratch | Yes — recomputes breaks, color maps from GeoJSON | Initial apply, session restore |
+| `recolorSymbology()` | Apply exact colors from a modified config | No — uses colors as-is | Legend color editing, user customization |
+
+`recolorSymbology()` handles each mode:
+- **unique:** Iterates features, looks up color from `valueColorMap`, applies via `applyStyleToLayer()`
+- **graduated:** Iterates features, classifies values into breaks, applies corresponding color from `colors[]`
+- **rules:** Evaluates rules in order, applies matching rule's color or `defaultColor`
+- **proportional:** Not supported for recoloring (single fixed color)
+
+---
+
 ## Symbology on Share View
 
 **File:** `src/routes/SharePage.tsx`, `src/components/legend/ShareLegend.tsx`
@@ -196,6 +230,42 @@ The share view (`/share/:shareId`) is a read-only snapshot. It re-applies saved 
 4. The returned resolved config (with `valueColorMap`, `breaks`, etc.) is passed to `ShareLegend` for rendering
 
 **Important:** The `applySymbology()` return value may differ from the stored config because it recomputes derived data (break points, color maps) from the actual GeoJSON data. The share view uses the RETURNED config for the legend, not the stored one.
+
+### Share View Labels
+
+If `layerCfg.labelField` is set, the share view applies labels using the same engine as the main app:
+
+```
+applyLabels(map, geojson, geomType, color, layerCfg.labelField)
+```
+
+- Zoom thresholds use `computeLabelMinZoom(geojson)` — same thresholds as main app
+- `initLabelMoveListener()` manages all labeled layers' viewport reconciliation
+- Labels are hidden when their parent layer is toggled off via the legend checkbox
+- On cleanup, `removeLabels()` is called for all label managers
+
+### Share View Clustering
+
+Point layers with `layerCfg.clustered === true` and feature count > 200 are wrapped in `L.MarkerClusterGroup`:
+
+```typescript
+clusterGroup = L.markerClusterGroup({
+  disableClusteringAtZoom: 20,
+  chunkedLoading: true,
+});
+clusterGroup.addLayer(leafletLayer);
+clusterGroup.addTo(map);
+```
+
+The cluster group (not the raw GeoJSON layer) is what gets added/removed when toggling layer visibility.
+
+### Share View Layer Toggle
+
+The `ShareLegend` component accepts optional `hiddenLayers` and `onToggleLayer` props:
+- Checkbox per layer controls visibility
+- Hidden layers dim to 40% opacity in the legend
+- Toggle removes/adds the display layer (cluster group or raw leaflet layer) from the map
+- Labels are also toggled with the parent layer
 
 ---
 
@@ -225,3 +295,33 @@ When modifying symbology or labels, verify these scenarios:
 - [ ] Pan rapidly — no UI jank (chunked rendering working)
 - [ ] Change label field — old labels removed, new labels shown
 - [ ] Select "No labels" — all labels removed cleanly
+
+### Legend Color Editing
+- [ ] Click a swatch in **Unique Values** legend — color picker opens, legend swatch updates
+- [ ] Click a swatch in **Graduated** legend — color picker opens, legend swatch updates
+- [ ] Click a swatch in **Rules** legend — color picker opens (both rules and default)
+- [ ] Edit color, **don't click OK** — map should NOT change yet
+- [ ] Edit color, **click OK** — map updates to show new colors
+- [ ] Edit color, then **apply new symbology from panel** — pending edits discarded
+- [ ] Edit color on a **clustered point layer**, click OK — cluster refreshes with new colors
+- [ ] Click the single swatch on a **non-symbology layer** — color changes immediately (no OK)
+
+### Share View
+- [ ] Share a map with **labels** enabled — shared view shows labels at correct zoom
+- [ ] Share a map with **clustering** enabled — shared view shows cluster groups
+- [ ] In shared view, **uncheck a layer** — layer disappears from map, labels disappear
+- [ ] In shared view, **re-check a layer** — layer and labels reappear
+- [ ] In shared view on **mobile** — legend is not covered by browser bottom bar
+- [ ] Share a map with **symbology** — shared view shows correct colors + legend
+- [ ] Share a map with **filters** — shared view shows filtered data only
+- [ ] Share a map with **popups configured** — shared view popups respect config
+
+### Admin & Auth (DynamoDB)
+- [ ] Create user in admin panel — user appears in DynamoDB `AUTH#USERS`
+- [ ] Create group with workspace checkboxes — group appears in DynamoDB `AUTH#GROUPS`
+- [ ] Login with DynamoDB-stored credentials — works from different browser
+- [ ] Delete user — removed from DynamoDB
+- [ ] Change password — new hash appears in DynamoDB `AUTH#PASSWORDS`
+- [ ] Default admin seeds on first deploy to empty DynamoDB
+- [ ] Dev mode (no `VITE_DYNAMO_API_URL`) — everything works via localStorage
+- [ ] Admin page login gate — non-admin users see "Admin credentials required"

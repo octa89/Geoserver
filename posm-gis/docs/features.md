@@ -297,9 +297,17 @@ The label engine uses **viewport culling** with RAF (requestAnimationFrame) chun
 
 ### Zoom Threshold
 
-Labels have a minimum zoom level based on feature count:
-- Few features (< 50): Labels visible from zoom 10+
-- Many features (> 1000): Labels only visible from zoom 16+
+Labels have a minimum zoom level based on feature count (from `computeLabelMinZoom()`):
+
+| Feature Count | Min Zoom |
+|---------------|----------|
+| < 30          | 15       |
+| < 100         | 16       |
+| < 500         | 17       |
+| < 2,000       | 18       |
+| >= 2,000      | 19       |
+
+These thresholds apply to both the main app and the share view.
 
 ---
 
@@ -350,6 +358,24 @@ The legend panel automatically updates to reflect the current symbology of all v
 - Only visible layers appear in the legend
 - Layers are listed in reverse layer order (top layer first)
 - The legend updates reactively when symbology or visibility changes
+
+### Interactive Color Editing
+
+Every color swatch in the legend (for Unique Values, Graduated, and Rule-Based symbology) is clickable. Clicking opens a native color picker.
+
+**Deferred Apply Pattern:**
+1. User clicks a swatch → native `<input type="color">` opens
+2. Color changes are held as "pending" state per layer (not yet applied to the map)
+3. An **OK** button appears below the layer's legend entries
+4. Clicking OK applies all pending color edits to the map at once via `recolorSymbology()`
+5. If the user changes symbology from the symbology panel, pending edits are discarded
+
+**Technical Details:**
+- `ClickableSymSwatch` component: hidden color input with hover highlight
+- `commitSymbology()` helper: updates Zustand store + calls `recolorSymbology()` + `refreshClusterAfterSymbology()`
+- `recolorSymbology()` in `symbology.ts`: applies exact colors from a `SymbologyConfig` without recomputing values/breaks — distinct from `applySymbology()` which recomputes everything
+
+**Layers without symbology:** The single-color swatch is also clickable and applies immediately (no OK button needed) via `resetSymbology()` with the new color.
 
 ---
 
@@ -445,6 +471,49 @@ The public viewer:
 - Shows a banner with share metadata at the top
 - Shows an error screen if the share ID is invalid or expired
 
+#### Share View: Labels
+
+If a layer had a `labelField` set when the share was created, labels are displayed in the share view using the same label engine as the main app:
+- Same zoom thresholds based on feature count (`computeLabelMinZoom()`)
+- Same viewport culling, chunked rendering (50 labels/frame), and debounced move/zoom listener (80ms)
+- Labels are hidden when their parent layer is toggled off
+- The `initLabelMoveListener()` function manages all labeled layers' visibility and viewport reconciliation
+
+#### Share View: Layer Toggle
+
+Each layer in the share legend has a checkbox to show/hide the layer:
+- Toggling a layer removes it from (or adds it back to) the Leaflet map
+- When a layer is hidden, its labels are also removed from the map
+- The legend entry dims to 40% opacity when the layer is hidden
+- Toggle state is local to the viewer session (not persisted)
+- Handles both clustered layers (`clusterGroup`) and non-clustered layers (`leafletLayer`)
+
+#### Share View: Marker Clustering
+
+Point layers that had clustering enabled (`clustered: true` in `PerLayerConfig`) are rendered with `L.MarkerClusterGroup` in the share view:
+- Same threshold as the main app: clustering only applied when feature count exceeds **200**
+- `disableClusteringAtZoom: 20` — individual markers appear at maximum zoom
+- `chunkedLoading: true` — non-blocking cluster computation
+- Clustered layers are toggled as a unit (the cluster group is added/removed, not the raw GeoJSON layer)
+
+#### Share View: Popups
+
+Popups in the share view are read-only and respect saved popup configuration:
+- Custom title text/field
+- Field ordering and hidden fields
+- Image and URL rendering
+- No configuration gear button (read-only)
+
+#### Share View: Mobile Layout
+
+The share legend is raised on mobile devices to avoid overlap with the browser's bottom navigation bar:
+
+| Screen Width | Legend `bottom` | Additional |
+|-------------|----------------|------------|
+| Desktop (>768px) | `32px` | Default |
+| Mobile (≤768px) | `72px` | Raised above browser bar |
+| Small mobile (≤400px) | `80px` | `max-width: 280px` |
+
 ### Share Expiry
 
 | Environment | Expiry                                           |
@@ -456,7 +525,10 @@ The public viewer:
 
 ## Admin Panel
 
-Accessible at `/admin` (admin role only). Provides CRUD operations for users and groups.
+Accessible at `/admin`. The admin page has its own built-in login gate — it shows a login form that only accepts users with `role: 'admin'`. This means:
+- The `/admin` route does **not** require being logged in to the main app first
+- A "Manage Users" button on the login page links directly to `/admin`
+- Non-admin users cannot access the admin panel even if they know the URL
 
 ### User Management
 
@@ -464,9 +536,10 @@ Accessible at `/admin` (admin role only). Provides CRUD operations for users and
 |--------------|--------------------------------------------|
 | Username     | Unique identifier (read-only when editing) |
 | Display Name | Shown in the sidebar header                |
+| City/Customer | City or customer name for the user        |
 | Password     | SHA-256 hashed before storage              |
 | Role         | `admin` or `user`                          |
-| Groups       | One or more group memberships              |
+| Groups       | One or more group memberships (checkboxes) |
 
 **Restrictions:**
 - Cannot delete your own account
@@ -479,39 +552,67 @@ Accessible at `/admin` (admin role only). Provides CRUD operations for users and
 |------------|------------------------------------------------|
 | Group ID   | Unique identifier (read-only when editing)     |
 | Label      | Human-readable group name                      |
-| Workspaces | Comma-separated GeoServer workspace names, or `__ALL__` for full access |
+| Workspaces | Checkboxes populated from GeoServer workspace discovery (`discoverAllWorkspaces()`). Select `__ALL__` for full access. |
+
+### Data Persistence
+
+User and group data is persisted to DynamoDB in production mode (when `VITE_DYNAMO_API_URL` is set):
+
+| Data | DynamoDB Key | Storage Pattern |
+|------|-------------|-----------------|
+| Users | `PK=AUTH#GLOBAL / SK=AUTH#USERS` | `dataJson: JSON.stringify(AppUser[])` |
+| Groups | `PK=AUTH#GLOBAL / SK=AUTH#GROUPS` | `dataJson: JSON.stringify(AppGroup[])` |
+| Passwords | `PK=AUTH#GLOBAL / SK=AUTH#PASSWORDS` | `dataJson: JSON.stringify(Record<string, string>)` |
+
+- **localStorage is used as a cache** — reads are synchronous from localStorage, writes go to both localStorage and DynamoDB
+- **Passwords are never returned to the client** — the `GET /api/auth/data` endpoint only returns users and groups
+- **Login validation happens server-side** — client sends SHA-256 hash to Lambda, which compares against stored hashes
+- **Graceful fallback** — if DynamoDB is unreachable, all operations fall back to localStorage silently
 
 ---
 
 ## Authentication
 
-### Login
+### Login Flow
 
+**Dev mode (no `VITE_DYNAMO_API_URL`):**
 1. Navigate to `/login` (or get redirected there)
 2. Enter username and password
 3. Password is SHA-256 hashed client-side
-4. Hash is compared against the stored hash
+4. Hash is compared against localStorage-stored hash
 5. On success, the user object is stored in `sessionStorage`
+
+**Prod mode (`VITE_DYNAMO_API_URL` set):**
+1. Navigate to `/login`
+2. Enter username and password
+3. Password is SHA-256 hashed client-side
+4. Hash is sent to `POST /api/auth/login` Lambda endpoint
+5. Lambda validates against DynamoDB-stored hash
+6. On success: returns `AppUser` object, stored in `sessionStorage`
+7. On failure: falls back to local validation (in case Lambda not deployed)
 
 ### Logout
 
 1. Click "Logout" in the sidebar header (or admin page)
-2. Session storage is cleared
+2. Session storage is cleared (`posm_current_user`, `posm_selected_workspace`)
 3. User is redirected to `/login`
 
 ### Route Protection
 
-| Route    | Requirement          | Redirect on fail |
-|----------|---------------------|------------------|
-| `/map`   | Authenticated user  | `/login`         |
-| `/admin` | Admin role          | `/map` or `/login` |
-| `/share` | None (public)       | —                |
+| Route    | Requirement          | Redirect/Gate |
+|----------|---------------------|---------------|
+| `/map`   | Authenticated user  | Redirect to `/login` |
+| `/admin` | None (public route) | AdminPage shows its own admin login form |
+| `/share` | None (public)       | — |
+| `/login` | None (public)       | — |
 
 ### Default Admin Account
 
 The application ships with one admin user. On first load, `initAuth()` creates:
-- **User**: admin (role: admin, group: all_access)
+- **User**: admin (role: admin, group: all_access, city: '')
 - **Group**: all_access (workspaces: `__ALL__`)
 - **Password**: POSMRocksGISCentral2026
+
+In production mode, `initAuth()` also calls `POST /api/auth/init` to seed the default admin in DynamoDB if the table is empty.
 
 Additional users and groups can be created via the admin panel.

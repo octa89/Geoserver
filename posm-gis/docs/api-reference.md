@@ -36,17 +36,17 @@ Complete module-level reference for all exports in the POSM GIS application.
 
 | Export                  | Signature                                           | Description                     |
 |-------------------------|-----------------------------------------------------|---------------------------------|
-| `AppUser`               | `interface`                                         | `{username, displayName, groups[], role}` |
+| `AppUser`               | `interface`                                         | `{username, displayName, city, groups[], role}` |
 | `AppGroup`              | `interface`                                         | `{id, label, workspaces[]}`     |
-| `initAuth()`            | `() => Promise<void>`                               | Initialize default users/groups |
+| `initAuth()`            | `() => Promise<void>`                               | Initialize default users/groups (seeds localStorage + DynamoDB) |
 | `hashPassword(pwd)`     | `(string) => Promise<string>`                       | SHA-256 hex hash                |
-| `setUserPassword(u,p)`  | `(string, string) => Promise<void>`                 | Store hashed password           |
-| `removeUserPassword(u)` | `(string) => void`                                  | Delete stored password          |
-| `getUsers()`            | `() => AppUser[]`                                   | Read all users from localStorage|
-| `setUsers(users)`       | `(AppUser[]) => void`                               | Write all users                 |
-| `getGroups()`           | `() => AppGroup[]`                                  | Read all groups                 |
-| `setGroups(groups)`     | `(AppGroup[]) => void`                              | Write all groups                |
-| `login(user, pwd)`      | `(string, string) => Promise<AppUser \| null>`      | Authenticate user               |
+| `setUserPassword(u,p)`  | `(string, string) => Promise<void>`                 | Store hashed password (localStorage + DynamoDB) |
+| `removeUserPassword(u)` | `(string) => Promise<void>`                         | Delete stored password (localStorage + DynamoDB) |
+| `getUsers()`            | `() => AppUser[]`                                   | Read all users from localStorage (cache) |
+| `setUsers(users)`       | `(AppUser[]) => Promise<void>`                      | Write users (localStorage + DynamoDB) |
+| `getGroups()`           | `() => AppGroup[]`                                  | Read all groups from localStorage (cache) |
+| `setGroups(groups)`     | `(AppGroup[]) => Promise<void>`                     | Write groups (localStorage + DynamoDB) |
+| `login(user, pwd)`      | `(string, string) => Promise<AppUser \| null>`      | Authenticate (remote first, local fallback) |
 | `logout()`              | `() => void`                                        | Clear session                   |
 | `getCurrentUser()`      | `() => AppUser \| null`                             | Get current session user        |
 | `getUserWorkspaces(u)`  | `(AppUser) => string[]`                             | Resolve user's workspace access |
@@ -280,6 +280,20 @@ interface ShareCreateResponse {
 | `discoverLayers`          | `(workspaces: string[]) => Promise<GeoServerLayer[]>`           |
 | `fetchLayerGeoJSON`       | `(fullName: string, cqlFilter?: string) => Promise<GeoJSON.FeatureCollection>` |
 
+### `src/lib/api.ts`
+
+| Export                 | Signature                                                            | Description |
+|------------------------|----------------------------------------------------------------------|-------------|
+| `USE_REMOTE`           | `boolean`                                                            | `true` when `VITE_DYNAMO_API_URL` is set |
+| `saveConfig`           | `(username, workspace, config) => Promise<void>`                     | Save workspace config |
+| `loadConfig`           | `(username, workspace) => Promise<WorkspaceConfig \| null>`          | Load workspace config |
+| `createShareLink`      | `(username, wsName, wsConfig) => Promise<{id, url}>`                 | Create share snapshot |
+| `loadShareSnapshot`    | `(shareId) => Promise<ShareSnapshot \| null>`                        | Load share by ID |
+| `loadAuthData`         | `() => Promise<{users, groups}>`                                     | Load users + groups (never passwords) |
+| `saveAuthData`         | `({users?, groups?, passwords?}) => Promise<void>`                   | Save auth data to DynamoDB |
+| `remoteLogin`          | `(username, passwordHash) => Promise<AppUser \| null>`               | Server-side login validation |
+| `initAuthRemote`       | `(defaultPasswordHash) => Promise<void>`                             | Seed default admin in DynamoDB |
+
 ### `src/lib/symbology.ts`
 
 | Export               | Signature                                                          |
@@ -291,8 +305,10 @@ interface ShareCreateResponse {
 | `applyGraduated`     | `(leafletLayer, geojson, geomType, pointSymbol, opts) => GraduatedSymbology` |
 | `applyProportional`  | `(leafletLayer, geojson, geomType, pointSymbol, opts) => ProportionalSymbology` |
 | `applyRules`         | `(leafletLayer, geojson, geomType, pointSymbol, opts) => RuleSymbology` |
+| `recolorSymbology`   | `(leafletLayer, geojson, geomType, pointSymbol, config) => void`   |
+| `refreshClusterAfterSymbology` | `(refs) => void`                                         |
 | `extractYear`        | `(val: unknown) => string \| null`                                 |
-| `resetSymbology`     | `(leafletLayer, geomType, color, pointSymbol) => void`             |
+| `resetSymbology`     | `(leafletLayer, geomType, color, pointSymbol, geojson?) => void`   |
 
 ### `src/lib/classify.ts`
 
@@ -457,9 +473,47 @@ function useSession(): {
 | `FilterForm`        | `{layerName, fields[], onAdd}`     | Single filter form      |
 | `ActiveFiltersList` | `{filters[], onRemove, combineMode}` | Filter chip display  |
 
+### Legend Components
+
+| Component             | Props                                           | Description                      |
+|-----------------------|-------------------------------------------------|----------------------------------|
+| `LegendPanel`         | None                                            | Dynamic legend display (main app) |
+| `LayerLegendBlock`    | `{name: string}`                                | Per-layer legend with pending color edits + OK button |
+| `ShareLegend`         | `{layers, hiddenLayers?, onToggleLayer?}`        | Standalone legend for share view |
+| `MapLegendControl`    | None                                            | Floating legend overlay on map   |
+
 ### Other Components
 
 | Component      | Props                | Description               |
 |----------------|----------------------|---------------------------|
-| `LegendPanel`  | None                 | Dynamic legend display    |
 | `ShareModal`   | `{isOpen, onClose}`  | Share URL dialog          |
+
+---
+
+## Backend (Amplify Gen 2)
+
+### Lambda Functions
+
+#### `amplify/functions/config-handler/handler.ts`
+- `GET /api/config?username=X&workspace=Y` — Load workspace config
+- `POST /api/config` — Save workspace config
+
+#### `amplify/functions/share-handler/handler.ts`
+- `POST /api/share` — Create share snapshot (7-day TTL)
+- `GET /api/share/{shareId}` — Load share snapshot
+
+#### `amplify/functions/auth-handler/handler.ts`
+- `GET /api/auth/data` — Load users + groups (never passwords)
+- `POST /api/auth/data` — Save `{users?, groups?, passwords?}` to DynamoDB
+- `POST /api/auth/login` — Validate `{username, passwordHash}`, returns `AppUser` or HTTP 401
+- `POST /api/auth/init` — Seed default admin if DynamoDB empty, accepts `{defaultPasswordHash}`
+
+### DynamoDB Schema (`posm-gis` table)
+
+| PK Pattern | SK Pattern | Data | Purpose |
+|------------|-----------|------|---------|
+| `USER#{username}` | `CONFIG#{workspace}` | `configJson` | Session/workspace config |
+| `SHARE#{id}` | `SHARE#{id}` | `wsName`, `configJson`, `createdAt` | Share snapshots (7-day TTL) |
+| `AUTH#GLOBAL` | `AUTH#USERS` | `dataJson` | User list |
+| `AUTH#GLOBAL` | `AUTH#GROUPS` | `dataJson` | Group list |
+| `AUTH#GLOBAL` | `AUTH#PASSWORDS` | `dataJson` | Password hashes |
