@@ -74,6 +74,33 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={() => navigate('/admin')}
+          style={{
+            marginTop: 16,
+            width: '100%',
+            background: 'transparent',
+            border: '1px solid rgba(66,212,244,0.3)',
+            borderRadius: 6,
+            padding: '10px',
+            fontSize: 13,
+            color: '#7f8fa6',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = '#42d4f4';
+            e.currentTarget.style.color = '#42d4f4';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(66,212,244,0.3)';
+            e.currentTarget.style.color = '#7f8fa6';
+          }}
+        >
+          Manage Users
+        </button>
       </div>
     </div>
   );
