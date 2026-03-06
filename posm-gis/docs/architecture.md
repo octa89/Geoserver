@@ -361,7 +361,7 @@ The `buildConfigObject()` function in `src/lib/configBuilder.ts` snapshots the f
 ```typescript
 {
   basemap: 'street',
-  center: [41.897, -84.037],
+  center: [40.758, -82.515],
   zoom: 14,
   layers: {
     'workspace:layerName': {

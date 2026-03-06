@@ -25,7 +25,7 @@ import { fetchLayerGeoJSON } from '../lib/geoserver';
 import { buildCqlFilter } from '../components/filter/filterUtils';
 import { createPointMarker } from '../lib/markers';
 import { darkenColor } from '../lib/colorUtils';
-import { defaultStyle, applySymbology } from '../lib/symbology';
+import { defaultStyle, recolorSymbology } from '../lib/symbology';
 import { detectGeomType } from '../lib/fieldUtils';
 import { bindPopups } from '../components/popup/FeaturePopup';
 import { removeLabels, applyLabels, computeLabelMinZoom, updateLabelVisibility } from '../lib/labels';
@@ -110,10 +110,11 @@ export function useFilters(mapRef: RefObject<L.Map | null>) {
             : undefined,
         });
 
-        // 5. Re-apply existing symbology (if any)
+        // 5. Re-apply existing symbology (if any) — use recolorSymbology
+        // so user-edited colors are preserved instead of recomputed.
         if (symbology) {
           try {
-            applySymbology(
+            recolorSymbology(
               leafletLayer,
               geojson,
               resolvedGeomType,

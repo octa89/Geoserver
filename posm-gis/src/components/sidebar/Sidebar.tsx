@@ -18,7 +18,7 @@ import { useSession } from '../../hooks/useSession';
 
 const SIDEBAR_MIN_WIDTH = 200;   // px
 const SIDEBAR_MAX_WIDTH = 600;   // px
-const SIDEBAR_DEFAULT_WIDTH = 280; // px
+const SIDEBAR_DEFAULT_WIDTH = 420; // px
 
 // ---------------------------------------------------------------------------
 // Props

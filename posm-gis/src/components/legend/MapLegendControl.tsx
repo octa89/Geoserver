@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import L from 'leaflet';
 import { useStore } from '../../store';
 import type {
   UniqueSymbology,
@@ -20,10 +21,20 @@ export function MapLegendControl() {
 
   const visibleLayers = [...layerOrder].reverse().filter((n) => layers[n]?.visible);
 
+  // Ref callback: prevent mouse/wheel events from propagating to the Leaflet map.
+  // Uses a callback ref so it fires when the DOM element actually mounts (not on
+  // an initial null render when there are no visible layers).
+  const legendRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+  }, []);
+
   if (visibleLayers.length === 0) return null;
 
   return (
     <div
+      ref={legendRef}
       className="map-legend-control"
       style={{
         position: 'absolute',
@@ -84,41 +95,64 @@ export function MapLegendControl() {
           overflowY: 'auto',
           maxHeight: 'calc(85vh - 80px)',
         }}>
-          {visibleLayers.map((name) => {
-            const layer = layers[name];
-            const sym = layer.symbology;
-            return (
-              <div key={name} style={{ marginBottom: 12 }}>
-                {/* Layer title */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
-                }}>
-                  <LayerSwatch color={layer.color} geomType={layer.geomType} />
-                  <span style={{
-                    fontSize: 13, fontWeight: 600, color: '#e8e8e8',
-                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    flex: 1,
-                  }}>
-                    {layer.label}
-                  </span>
-                  <span style={{ fontSize: 11, color: layer.activeFilters?.length ? '#42d4f4' : '#888', flexShrink: 0 }}>
-                    {layer.activeFilters?.length
-                      ? `${layer.featureCount.toLocaleString()}/${layer.totalFeatureCount.toLocaleString()}`
-                      : layer.featureCount.toLocaleString()}
-                  </span>
-                </div>
+          {visibleLayers.map((name) => (
+            <CollapsibleLayerLegend key={name} name={name} layer={layers[name]} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-                {/* Symbology entries */}
-                <div style={{ paddingLeft: 4 }}>
-                  {sym ? (
-                    <SymLegend sym={sym} />
-                  ) : (
-                    <LegendRow color={layer.color} label="All features" geomType={layer.geomType} />
-                  )}
-                </div>
-              </div>
-            );
-          })}
+// ---------------------------------------------------------------------------
+// Collapsible per-layer legend block
+// ---------------------------------------------------------------------------
+
+function CollapsibleLayerLegend({ name, layer }: { name: string; layer: import('../../types/layer').LayerConfig }) {
+  const [layerCollapsed, setLayerCollapsed] = useState(false);
+  const sym = layer.symbology;
+
+  return (
+    <div key={name} style={{ marginBottom: 12 }}>
+      {/* Layer title — clickable to toggle */}
+      <div
+        onClick={() => setLayerCollapsed(!layerCollapsed)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: layerCollapsed ? 0 : 6,
+          cursor: 'pointer', userSelect: 'none',
+        }}
+      >
+        <span style={{
+          fontSize: 10, color: '#42d4f4', lineHeight: 1, flexShrink: 0,
+          transition: 'transform 0.15s',
+          transform: layerCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+          display: 'inline-block',
+        }}>
+          &#9660;
+        </span>
+        <LayerSwatch color={layer.color} geomType={layer.geomType} />
+        <span style={{
+          fontSize: 13, fontWeight: 600, color: '#e8e8e8',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          flex: 1,
+        }}>
+          {layer.label}
+        </span>
+        <span style={{ fontSize: 11, color: layer.activeFilters?.length ? '#42d4f4' : '#888', flexShrink: 0 }}>
+          {layer.activeFilters?.length
+            ? `${layer.featureCount.toLocaleString()}/${layer.totalFeatureCount.toLocaleString()}`
+            : layer.featureCount.toLocaleString()}
+        </span>
+      </div>
+
+      {/* Symbology entries — collapsible */}
+      {!layerCollapsed && (
+        <div style={{ paddingLeft: 4 }}>
+          {sym ? (
+            <SymLegend sym={sym} />
+          ) : (
+            <LegendRow color={layer.color} label="All features" geomType={layer.geomType} />
+          )}
         </div>
       )}
     </div>

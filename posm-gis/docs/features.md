@@ -84,7 +84,7 @@ The selected basemap is persisted in the session and restored on page reload.
 - Zoom controls are positioned in the **bottom-right** corner
 - Maximum zoom: **22** (tiles available up to zoom 19, then overzoomed)
 - Default zoom: **14**
-- Default center: **41.897, -84.037** (configurable in `src/config/constants.ts`)
+- Default center: **40.758, -82.515** (Mansfield, OH — configurable in `src/config/constants.ts`)
 
 ### Map Interactions
 

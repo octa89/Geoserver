@@ -403,26 +403,41 @@ function LayerLegendBlock({ name }: { name: string }) {
     if (pending) setPending(null);
   }
 
+  const [layerCollapsed, setLayerCollapsed] = useState(false);
+
   if (!layer) return null;
 
   return (
     <div className="legend-layer-block">
       <div
         className="legend-layer-title"
+        onClick={() => setLayerCollapsed(!layerCollapsed)}
         style={{
           fontSize: 11,
           fontWeight: 600,
           color: '#e0e0e0',
-          marginBottom: 4,
+          marginBottom: layerCollapsed ? 0 : 4,
           display: 'flex',
           alignItems: 'center',
           gap: 6,
+          cursor: 'pointer',
+          userSelect: 'none',
         }}
       >
+        <span style={{
+          fontSize: 8, color: '#42d4f4', lineHeight: 1, flexShrink: 0,
+          transition: 'transform 0.15s',
+          transform: layerCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+          display: 'inline-block',
+        }}>
+          &#9660;
+        </span>
         {displaySym?.mode === 'graduated' ? (
           <RampStrip ramp={(displaySym as GraduatedSymbology).ramp} />
         ) : !displaySym ? (
-          <ClickableSwatch color={layer.color} layerName={name} size={10} />
+          <span onClick={(e) => e.stopPropagation()}>
+            <ClickableSwatch color={layer.color} layerName={name} size={10} />
+          </span>
         ) : (
           <Swatch color={layer.color} size={10} />
         )}
@@ -436,31 +451,35 @@ function LayerLegendBlock({ name }: { name: string }) {
         )}
       </div>
 
-      <div style={{ paddingLeft: 4 }}>
-        {displaySym ? (
-          <SymbologyLegend sym={displaySym} onUpdate={setPending} />
-        ) : (
-          <ClickableLegendEntry color={layer.color} label={layer.label} layerName={name} />
-        )}
-      </div>
+      {!layerCollapsed && (
+        <>
+          <div style={{ paddingLeft: 4 }}>
+            {displaySym ? (
+              <SymbologyLegend sym={displaySym} onUpdate={setPending} />
+            ) : (
+              <ClickableLegendEntry color={layer.color} label={layer.label} layerName={name} />
+            )}
+          </div>
 
-      {hasPending && (
-        <button
-          onClick={handleApply}
-          style={{
-            marginTop: 4,
-            padding: '3px 12px',
-            fontSize: 10,
-            fontWeight: 700,
-            background: '#42d4f4',
-            color: '#0a0a1a',
-            border: 'none',
-            borderRadius: 4,
-            cursor: 'pointer',
-          }}
-        >
-          OK
-        </button>
+          {hasPending && (
+            <button
+              onClick={handleApply}
+              style={{
+                marginTop: 4,
+                padding: '3px 12px',
+                fontSize: 10,
+                fontWeight: 700,
+                background: '#42d4f4',
+                color: '#0a0a1a',
+                border: 'none',
+                borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              OK
+            </button>
+          )}
+        </>
       )}
     </div>
   );

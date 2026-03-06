@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
+import L from 'leaflet';
 import type {
   SymbologyConfig,
   UniqueSymbology,
@@ -34,10 +35,18 @@ interface ShareLegendProps {
 export function ShareLegend({ layers, hiddenLayers = {}, onToggleLayer }: ShareLegendProps) {
   const [collapsed, setCollapsed] = useState(false);
 
+  // Ref callback: prevent mouse/wheel events from propagating to the Leaflet map.
+  const legendRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return;
+    L.DomEvent.disableClickPropagation(el);
+    L.DomEvent.disableScrollPropagation(el);
+  }, []);
+
   if (layers.length === 0) return null;
 
   return (
     <div
+      ref={legendRef}
       className="share-legend"
       style={{
         position: 'absolute',
@@ -98,47 +107,95 @@ export function ShareLegend({ layers, hiddenLayers = {}, onToggleLayer }: ShareL
           overflowY: 'auto',
           maxHeight: 'calc(50vh - 50px)',
         }}>
-          {layers.map((layer) => {
-            const isHidden = !!hiddenLayers[layer.name];
-            return (
-            <div key={layer.name} style={{ marginBottom: 12, opacity: isHidden ? 0.4 : 1, transition: 'opacity 0.15s' }}>
-              {/* Layer title */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
-              }}>
-                {onToggleLayer && (
-                  <input
-                    type="checkbox"
-                    checked={!isHidden}
-                    onChange={() => onToggleLayer(layer.name)}
-                    title={isHidden ? 'Show layer' : 'Hide layer'}
-                    style={{ margin: 0, cursor: 'pointer', accentColor: '#42d4f4', flexShrink: 0 }}
-                  />
-                )}
-                <LayerSwatch color={layer.color} geomType={layer.geomType} />
-                <span style={{
-                  fontSize: 13, fontWeight: 600, color: '#e8e8e8',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                  flex: 1,
-                }}>
-                  {layer.label}
-                </span>
-                <span style={{ fontSize: 11, color: '#888', flexShrink: 0 }}>
-                  {layer.featureCount.toLocaleString()}
-                </span>
-              </div>
+          {layers.map((layer) => (
+            <CollapsibleShareLayerLegend
+              key={layer.name}
+              layer={layer}
+              isHidden={!!hiddenLayers[layer.name]}
+              onToggleLayer={onToggleLayer}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
-              {/* Symbology entries */}
-              <div style={{ paddingLeft: 4 }}>
-                {layer.symbology ? (
-                  <SymLegend sym={layer.symbology} />
-                ) : (
-                  <LegendRow color={layer.color} label="All features" geomType={layer.geomType} />
-                )}
-              </div>
-            </div>
-            );
-          })}
+// ---------------------------------------------------------------------------
+// Collapsible per-layer legend block for share view
+// ---------------------------------------------------------------------------
+
+function CollapsibleShareLayerLegend({
+  layer,
+  isHidden,
+  onToggleLayer,
+}: {
+  layer: ShareLayerInfo;
+  isHidden: boolean;
+  onToggleLayer?: (layerName: string) => void;
+}) {
+  const [layerCollapsed, setLayerCollapsed] = useState(false);
+
+  const handleToggle = useCallback(() => {
+    onToggleLayer?.(layer.name);
+  }, [onToggleLayer, layer.name]);
+
+  return (
+    <div style={{ marginBottom: 12, opacity: isHidden ? 0.4 : 1, transition: 'opacity 0.15s' }}>
+      {/* Layer title — clickable to toggle collapse */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, marginBottom: layerCollapsed ? 0 : 6,
+          cursor: 'pointer', userSelect: 'none',
+        }}
+      >
+        {onToggleLayer && (
+          <input
+            type="checkbox"
+            checked={!isHidden}
+            onChange={handleToggle}
+            onClick={(e) => e.stopPropagation()}
+            title={isHidden ? 'Show layer' : 'Hide layer'}
+            style={{ margin: 0, cursor: 'pointer', accentColor: '#42d4f4', flexShrink: 0 }}
+          />
+        )}
+        <span
+          onClick={() => setLayerCollapsed(!layerCollapsed)}
+          style={{
+            fontSize: 10, color: '#42d4f4', lineHeight: 1, flexShrink: 0,
+            transition: 'transform 0.15s',
+            transform: layerCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+            display: 'inline-block',
+          }}
+        >
+          &#9660;
+        </span>
+        <div
+          onClick={() => setLayerCollapsed(!layerCollapsed)}
+          style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, overflow: 'hidden' }}
+        >
+          <LayerSwatch color={layer.color} geomType={layer.geomType} />
+          <span style={{
+            fontSize: 13, fontWeight: 600, color: '#e8e8e8',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            flex: 1,
+          }}>
+            {layer.label}
+          </span>
+          <span style={{ fontSize: 11, color: '#888', flexShrink: 0 }}>
+            {layer.featureCount.toLocaleString()}
+          </span>
+        </div>
+      </div>
+
+      {/* Symbology entries — collapsible */}
+      {!layerCollapsed && (
+        <div style={{ paddingLeft: 4 }}>
+          {layer.symbology ? (
+            <SymLegend sym={layer.symbology} />
+          ) : (
+            <LegendRow color={layer.color} label="All features" geomType={layer.geomType} />
+          )}
         </div>
       )}
     </div>

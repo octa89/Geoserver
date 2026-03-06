@@ -3,7 +3,7 @@ export const GEOSERVER_URL = import.meta.env.VITE_GEOSERVER_URL || '/geoserver';
 export const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 // ---- Default Map View ----
-export const DEFAULT_CENTER: [number, number] = [41.897, -84.037];
+export const DEFAULT_CENTER: [number, number] = [40.758, -82.515];
 export const DEFAULT_ZOOM = 14;
 export const MAX_ZOOM = 22;
 export const MAX_NATIVE_ZOOM = 19;

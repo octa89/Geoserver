@@ -21,7 +21,7 @@ Complete module-level reference for all exports in the POSM GIS application.
 |--------------------|-------------------------------|--------------------------------------|
 | `GEOSERVER_URL`    | `string`                      | GeoServer API base URL               |
 | `API_URL`          | `string`                      | Backend API base URL                 |
-| `DEFAULT_CENTER`   | `[number, number]`            | Default map center `[41.897, -84.037]` |
+| `DEFAULT_CENTER`   | `[number, number]`            | Default map center `[40.758, -82.515]` (Mansfield, OH) |
 | `DEFAULT_ZOOM`     | `number`                      | Default zoom level `14`              |
 | `MAX_ZOOM`         | `number`                      | Maximum zoom `22`                    |
 | `MAX_NATIVE_ZOOM`  | `number`                      | Max native tile zoom `19`            |
@@ -214,7 +214,7 @@ interface ShareCreateResponse {
 
 | Property                | Type                           | Default          |
 |-------------------------|--------------------------------|------------------|
-| `center`                | `[number, number]`             | `[41.897, -84.037]` |
+| `center`                | `[number, number]`             | `[40.758, -82.515]` |
 | `zoom`                  | `number`                       | `14`             |
 | `basemap`               | `BasemapKey`                   | `'street'`       |
 | `layers`                | `Record<string, LayerConfig>`  | `{}`             |

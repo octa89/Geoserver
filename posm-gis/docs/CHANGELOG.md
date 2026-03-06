@@ -4,6 +4,43 @@ All notable changes to the POSM GIS application, organized by release/commit.
 
 ---
 
+## [Unreleased] — Color Persistence, Legend Collapse, UX Improvements
+
+### Fixed
+- **Symbology color persistence on refresh** — User-edited colors (unique value colors, graduated colors, rule colors) now persist correctly across page reloads. Previously, `applySymbology()` was used during session restore which recomputed colors from scratch, discarding saved edits. Changed all restore paths (MapPage reconciliation, SharePage, useFilters) to use `recolorSymbology()` which applies the exact saved colors without recomputing.
+- **Base layer color persistence on refresh** — When no advanced symbology is active, the saved base color is now re-applied to the Leaflet layer via `resetSymbology()` during session restore. Previously, layers always reverted to the default palette color.
+
+### Added
+- **Collapsible per-layer legend** — All three legend components (MapLegendControl, ShareLegend, LegendPanel) now support per-layer collapse/expand:
+  - Click the layer title row or the chevron arrow to toggle symbology entries
+  - Chevron rotates 90 degrees when collapsed (smooth CSS transition)
+  - Layer title, swatch, and feature count remain visible when collapsed
+  - All layers start expanded by default
+  - Collapse state is UI-only (not persisted across reloads)
+- **Legend scroll fix** — Mouse wheel scrolling inside the map legend (MapLegendControl) and share legend (ShareLegend) now works correctly. Previously, scroll events propagated to the Leaflet map causing zoom instead of scroll. Fixed using `L.DomEvent.disableScrollPropagation()` via callback refs.
+- **DynamoDB documentation** (`docs/dynamodb.md`) — Comprehensive guide covering single-table design, item types, JSON storage convention, Lambda handlers, dev/prod duality, TTL auto-expiry, and CDK definition.
+- **GeoServer routing documentation** (`docs/geoserver-routing.md`) — Detailed guide covering Vite dev proxy, production CloudFront chain, WFS protocol usage, workspace discovery, GeoJSON fetching, CQL filtering, and error handling.
+
+### Changed
+- **Default map center** — Changed from Adrian, MI (41.897, -84.037) to Mansfield, OH (40.758, -82.515)
+- **Default sidebar width** — Increased from 280px to 420px
+
+### Files Changed
+| File | Change |
+|------|--------|
+| `src/routes/MapPage.tsx` | Use `recolorSymbology` instead of `applySymbology` for session restore; add `resetSymbology` else-branch for base color restore |
+| `src/routes/SharePage.tsx` | Use `recolorSymbology` instead of `applySymbology` for share restore |
+| `src/hooks/useFilters.ts` | Use `recolorSymbology` instead of `applySymbology` when re-applying symbology after filter change |
+| `src/components/legend/MapLegendControl.tsx` | Per-layer collapsible legend; scroll propagation fix with `L.DomEvent` |
+| `src/components/legend/ShareLegend.tsx` | Per-layer collapsible legend; scroll propagation fix with `L.DomEvent` |
+| `src/components/legend/LegendPanel.tsx` | Per-layer collapsible legend in sidebar |
+| `src/config/constants.ts` | Default center changed to Mansfield, OH |
+| `src/components/sidebar/Sidebar.tsx` | Default sidebar width changed to 420px |
+| `docs/dynamodb.md` | **New** — DynamoDB architecture documentation |
+| `docs/geoserver-routing.md` | **New** — GeoServer routing documentation |
+
+---
+
 ## [Unreleased] — Share View Enhancements
 
 ### Added

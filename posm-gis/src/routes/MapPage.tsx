@@ -9,7 +9,7 @@ import 'leaflet.markercluster';
 import { useStore } from '../store';
 import { getAllLayerRefs, getLayerRefs, setLayerRefs, clearRegistry } from '../store/leafletRegistry';
 import { initLabelMoveListener, computeLabelMinZoom, removeLabels, applyLabels, updateLabelVisibility } from '../lib/labels';
-import { applySymbology, refreshClusterAfterSymbology } from '../lib/symbology';
+import { recolorSymbology, resetSymbology, refreshClusterAfterSymbology } from '../lib/symbology';
 import { BASEMAPS, DEFAULT_CENTER, DEFAULT_ZOOM, MAX_ZOOM, MAX_NATIVE_ZOOM } from '../config/constants';
 import { logout, getUserWorkspaces } from '../config/auth';
 import type { AppUser } from '../config/auth';
@@ -44,6 +44,7 @@ export function MapPage({ user }: MapPageProps) {
 
   // Workspace modal state
   const [wsModalOpen, setWsModalOpen] = useState(false);
+  const [wsModalCancellable, setWsModalCancellable] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const autoSaveCleanupRef = useRef<(() => void) | null>(null);
 
@@ -211,10 +212,12 @@ export function MapPage({ user }: MapPageProps) {
             continue;
           }
 
-          // Apply saved symbology to the Leaflet layer
+          // Apply saved symbology to the Leaflet layer — use recolorSymbology
+          // (not applySymbology) so that user-edited colors from the saved
+          // valueColorMap / colors array are preserved instead of recomputed.
           if (cfg.symbology) {
             try {
-              applySymbology(
+              recolorSymbology(
                 refs.leafletLayer,
                 refs.geojson,
                 cfg.geomType,
@@ -225,6 +228,11 @@ export function MapPage({ user }: MapPageProps) {
             } catch (e) {
               console.warn(`[loadWorkspaces] symbology restore failed for "${layerName}"`, e);
             }
+          } else {
+            // Re-apply base color to Leaflet layer (it was created with
+            // default palette color, but session may have restored a different one)
+            resetSymbology(refs.leafletLayer, cfg.geomType, cfg.color, cfg.pointSymbol, refs.geojson);
+            refreshClusterAfterSymbology(refs);
           }
 
           // Apply saved labels
@@ -256,11 +264,19 @@ export function MapPage({ user }: MapPageProps) {
   // Workspace modal selection handler
   const handleWorkspaceSelect = useCallback((workspaces: string[]) => {
     setWsModalOpen(false);
+    setWsModalCancellable(false);
     loadWorkspaces(workspaces);
   }, [loadWorkspaces]);
 
-  // Switch workspace (re-open modal)
+  // Workspace modal cancel handler (only available when switching)
+  const handleWsModalCancel = useCallback(() => {
+    setWsModalOpen(false);
+    setWsModalCancellable(false);
+  }, []);
+
+  // Switch workspace (re-open modal, cancellable)
   const handleSwitchWorkspace = useCallback(() => {
+    setWsModalCancellable(true);
     setWsModalOpen(true);
   }, []);
 
@@ -276,6 +292,7 @@ export function MapPage({ user }: MapPageProps) {
         isOpen={wsModalOpen}
         onSelect={handleWorkspaceSelect}
         userWorkspaces={isAdmin ? null : (userWorkspaceList.length > 1 ? userWorkspaceList : null)}
+        onCancel={wsModalCancellable ? handleWsModalCancel : undefined}
       />
 
       {/* Mobile hamburger button */}

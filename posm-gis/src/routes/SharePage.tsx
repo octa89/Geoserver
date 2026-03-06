@@ -6,7 +6,7 @@ import 'leaflet.markercluster';
 
 import { fetchLayerGeoJSON } from '../lib/geoserver';
 import { detectGeomType } from '../lib/fieldUtils';
-import { defaultStyle, applySymbology } from '../lib/symbology';
+import { defaultStyle, recolorSymbology } from '../lib/symbology';
 import { createPointMarker } from '../lib/markers';
 import { darkenColor } from '../lib/colorUtils';
 import { buildCqlFilter } from '../components/filter/filterUtils';
@@ -285,10 +285,11 @@ export function SharePage() {
           style: !isPoint ? () => defaultStyle(geomType, color) : undefined,
         });
 
-        // Apply saved symbology if present — returns resolved config with valueColorMap etc.
-        let resolvedSymbology = layerCfg.symbology;
+        // Apply saved symbology if present — use recolorSymbology so that
+        // user-edited colors are preserved instead of recomputed from palette.
+        const resolvedSymbology = layerCfg.symbology;
         if (layerCfg.symbology) {
-          resolvedSymbology = applySymbology(
+          recolorSymbology(
             leafletLayer,
             geojson,
             geomType,
