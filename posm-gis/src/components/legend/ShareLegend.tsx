@@ -50,8 +50,8 @@ export function ShareLegend({ layers, hiddenLayers = {}, onToggleLayer }: ShareL
       className="share-legend"
       style={{
         position: 'absolute',
-        bottom: 32,
-        left: 12,
+        top: 56,
+        right: 12,
         zIndex: 1000,
         background: 'rgba(26,26,46,0.95)',
         backdropFilter: 'blur(8px)',

@@ -64,6 +64,7 @@ export function MapPage({ user }: MapPageProps) {
       zoom: DEFAULT_ZOOM,
       maxZoom: MAX_ZOOM,
       zoomControl: false,
+      renderer: L.canvas({ tolerance: 12 }),
     });
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);

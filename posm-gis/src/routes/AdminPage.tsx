@@ -858,7 +858,7 @@ export function AdminPage() {
       <main style={{ padding: '28px 24px', maxWidth: 1200, margin: '0 auto' }}>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(480px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(min(480px, 100%), 1fr))',
           gap: 24,
           alignItems: 'start',
         }}>

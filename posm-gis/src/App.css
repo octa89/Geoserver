@@ -11,6 +11,7 @@ body {
 .app-container {
   display: flex;
   height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
@@ -760,6 +761,7 @@ body {
   .map-container {
     width: 100vw !important;
     height: 100vh !important;
+    height: 100dvh !important;
     flex: none;
   }
 
@@ -843,21 +845,23 @@ body {
     max-height: 80vh;
   }
 
-  /* Map legend control: smaller, bottom-left on mobile to avoid zoom controls */
+  /* Map legend control: top-right on mobile, below sidebar toggle, semi-transparent */
   .map-legend-control {
-    top: auto !important;
-    bottom: 60px !important;
+    top: 56px !important;
+    bottom: auto !important;
     right: 8px !important;
     left: auto !important;
     max-width: calc(70vw) !important;
     min-width: 0 !important;
     font-size: 11px;
+    opacity: 0.85 !important;
   }
 
-  /* Leaflet zoom controls: smaller on mobile */
+  /* Leaflet zoom controls: raised above phone bottom bar, semi-transparent */
   .leaflet-control-zoom {
-    margin-bottom: 12px !important;
+    margin-bottom: calc(48px + env(safe-area-inset-bottom, 0px)) !important;
     margin-right: 8px !important;
+    opacity: 0.75 !important;
   }
 
   /* Leaflet attribution: compact on mobile */
@@ -891,9 +895,12 @@ body {
     padding: 6px 10px !important;
   }
 
-  /* Share legend: raise above mobile browser bottom bar */
+  /* Share legend: position top-right on mobile, semi-transparent */
   .share-legend {
-    bottom: 72px !important;
+    top: 48px !important;
+    right: 8px !important;
+    max-width: calc(70vw) !important;
+    opacity: 0.85 !important;
   }
 }
 
@@ -925,7 +932,8 @@ body {
   }
 
   .share-legend {
-    bottom: 80px !important;
-    max-width: 280px !important;
+    top: 44px !important;
+    right: 6px !important;
+    max-width: 260px !important;
   }
 }

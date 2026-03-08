@@ -120,7 +120,7 @@ function bindSharePopups(
         (leafletLayer as any)._map;
       if (!map) return;
 
-      L.popup({ maxWidth: 380, maxHeight: 350, className: 'posm-popup' })
+      L.popup({ maxWidth: 300, maxHeight: 350, className: 'posm-popup' })
         .setLatLng(latlng)
         .setContent(html)
         .openOn(map);
@@ -234,6 +234,7 @@ export function SharePage() {
       zoom: wsConfig.zoom,
       maxZoom: 22,
       zoomControl: false,
+      renderer: L.canvas({ tolerance: 12 }),
     });
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -392,7 +393,7 @@ export function SharePage() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          height: '100vh',
+          height: '100dvh',
           background: '#0a0a1a',
           color: '#e0e0e0',
           fontFamily: "'Segoe UI', sans-serif",
@@ -433,7 +434,7 @@ export function SharePage() {
       style={{
         position: 'relative',
         width: '100vw',
-        height: '100vh',
+        height: '100dvh',
         background: '#0a0a1a',
         overflow: 'hidden',
       }}
@@ -452,8 +453,9 @@ export function SharePage() {
           borderBottom: '1px solid #42d4f4',
           display: 'flex',
           alignItems: 'center',
+          flexWrap: 'wrap' as const,
           padding: '8px 16px',
-          gap: 16,
+          gap: '8px 16px',
           zIndex: 1000,
           fontFamily: "'Segoe UI', sans-serif",
         }}
