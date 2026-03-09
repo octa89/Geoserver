@@ -24,7 +24,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 | Username | Password                    | Role  |
 |----------|-----------------------------|-------|
-| admin    | POSMRocksGISCentral2026     | admin |
+| admin    |    | admin |
 
 The admin user has access to all workspaces and the admin panel at `/admin`.
 
