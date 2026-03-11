@@ -26,7 +26,7 @@ const SIDEBAR_DEFAULT_WIDTH = 420; // px
 
 interface SidebarProps {
   mapRef: RefObject<L.Map | null>;
-  user?: { displayName: string; role?: string };
+  user?: { displayName: string; role?: string; username?: string };
   onLogout?: () => void;
   isAdmin?: boolean;
   onSwitchWorkspace?: () => void;
@@ -485,6 +485,7 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace, mo
       <ShareModal
         isOpen={shareModalOpen}
         onClose={() => setShareModalOpen(false)}
+        isGuest={user?.username === 'guest'}
       />
     </div>
   );

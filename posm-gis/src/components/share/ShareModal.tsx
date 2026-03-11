@@ -10,6 +10,7 @@ import { createShareLink } from '../../lib/api';
 interface ShareModalProps {
   isOpen: boolean;
   onClose: () => void;
+  isGuest?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -25,7 +26,7 @@ interface ShareModalProps {
  * - Provide Copy / Open / Email / WhatsApp / Teams actions.
  * - Close on X button, overlay click, or Escape key.
  */
-export function ShareModal({ isOpen, onClose }: ShareModalProps) {
+export function ShareModal({ isOpen, onClose, isGuest }: ShareModalProps) {
   const [shareUrl, setShareUrl] = useState<string>('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +34,9 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
 
-  // Generate share URL whenever the modal opens
+  // Generate share URL whenever the modal opens (skip for guests)
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || isGuest) return;
 
     let cancelled = false;
     setCreating(true);
@@ -63,7 +64,7 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [isOpen, isGuest]);
 
   // Close on Escape key
   useEffect(() => {
@@ -243,6 +244,25 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
           </button>
         </div>
 
+        {/* Guest restriction message */}
+        {isGuest ? (
+          <div style={{
+            background: 'rgba(66,212,244,0.08)',
+            border: '1px solid rgba(66,212,244,0.25)',
+            borderRadius: 6,
+            padding: '16px 18px',
+            textAlign: 'center',
+          }}>
+            <p style={{ margin: '0 0 8px', fontSize: 14, color: '#e0e0e0', fontWeight: 600 }}>
+              Sign in required
+            </p>
+            <p style={{ margin: 0, fontSize: 12, color: '#999', lineHeight: 1.6 }}>
+              You need to sign in as a registered user to share maps.
+              Guest accounts have view-only access.
+            </p>
+          </div>
+        ) : (
+        <>
         {/* Description */}
         <p style={{ margin: 0, fontSize: 12, color: '#999', lineHeight: 1.5 }}>
           Anyone with this link can view the current map — layers, symbology, zoom
@@ -317,6 +337,8 @@ export function ShareModal({ isOpen, onClose }: ShareModalProps) {
         <p style={{ margin: 0, fontSize: 10, color: '#555' }}>
           Share links expire after 7 days.
         </p>
+        </>
+        )}
       </div>
     </div>
   );

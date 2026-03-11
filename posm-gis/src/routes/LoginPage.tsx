@@ -34,6 +34,19 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     }
   };
 
+  const handleGuest = () => {
+    const guestUser: AppUser = {
+      username: 'guest',
+      displayName: 'Guest',
+      city: '',
+      groups: ['guest_access'],
+      role: 'user',
+    };
+    sessionStorage.setItem('posm_current_user', JSON.stringify(guestUser));
+    onLogin(guestUser);
+    navigate('/map');
+  };
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -74,6 +87,34 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+
+        <button
+          type="button"
+          onClick={handleGuest}
+          style={{
+            marginTop: 12,
+            width: '100%',
+            background: 'rgba(66,212,244,0.1)',
+            border: '1px solid rgba(66,212,244,0.3)',
+            borderRadius: 6,
+            padding: '10px',
+            fontSize: 13,
+            fontWeight: 600,
+            color: '#42d4f4',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'rgba(66,212,244,0.2)';
+            e.currentTarget.style.borderColor = '#42d4f4';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'rgba(66,212,244,0.1)';
+            e.currentTarget.style.borderColor = 'rgba(66,212,244,0.3)';
+          }}
+        >
+          Continue as Guest
+        </button>
 
         <button
           type="button"

@@ -51,6 +51,11 @@ const DEFAULT_GROUPS: AppGroup[] = [
     label: 'Full Access',
     workspaces: ['__ALL__'],
   },
+  {
+    id: 'guest_access',
+    label: 'Guest (City of POSM)',
+    workspaces: ['City_of_POSM'],
+  },
 ];
 
 const DEFAULT_PASSWORD = 'POSMRocksGISCentral2026';
@@ -223,6 +228,11 @@ export function getUserWorkspaces(user: AppUser): string[] {
   for (const g of userGroups) {
     if (g.workspaces.includes('__ALL__')) return ['__ALL__'];
     g.workspaces.forEach(w => workspaces.add(w));
+  }
+  // Guest fallback: if the guest_access group isn't in stored groups yet,
+  // hardcode City_of_POSM so guests always get access.
+  if (workspaces.size === 0 && user.groups.includes('guest_access')) {
+    return ['City_of_POSM'];
   }
   return Array.from(workspaces);
 }
