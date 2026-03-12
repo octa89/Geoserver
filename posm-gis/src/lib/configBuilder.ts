@@ -26,6 +26,7 @@ export function buildConfigObject(): {
       symbology: layer.symbology,
       pointSymbol: layer.pointSymbol,
       showArrows: layer.showArrows,
+      showFlowPulse: layer.showFlowPulse,
       clustered: layer.clustered,
       labelField: layer.labelField,
       activeFilters: layer.activeFilters,
@@ -48,6 +49,7 @@ export function buildConfigObject(): {
       center: b.center,
       zoom: b.zoom,
     })),
+    savedSearches: state.savedSearches,
   };
 
   return {

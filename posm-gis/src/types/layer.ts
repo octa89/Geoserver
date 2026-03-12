@@ -15,6 +15,7 @@ export interface LayerConfig {
   pointSymbol: string;
   clustered: boolean;
   showArrows: boolean;
+  showFlowPulse: boolean;
   labelField: string | null;
   fields: string[];
   featureCount: number;

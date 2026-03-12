@@ -5,6 +5,7 @@ import { useStore } from '../../store';
 import { resetSymbology, refreshClusterAfterSymbology } from '../../lib/symbology';
 import { getLayerRefs, setLayerRefs } from '../../store/leafletRegistry';
 import { toggleArrows } from '../../lib/arrows';
+import { toggleFlowPulse } from '../../lib/sewerFlow';
 import { darkenColor } from '../../lib/colorUtils';
 import { UniqueValuesPanel } from './UniqueValuesPanel';
 import { GraduatedPanel } from './GraduatedPanel';
@@ -39,15 +40,20 @@ interface SymbologyPanelProps {
  * - Sub-panel for the active mode (stays open, no toggle-off)
  */
 export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
-  const layers = useStore((s) => s.layers);
+  // Subscribe only to layerOrder (stable). Read layers imperatively.
   const layerOrder = useStore((s) => s.layerOrder);
   const setLayerSymbology = useStore((s) => s.setLayerSymbology);
   const setLayerColor = useStore((s) => s.setLayerColor);
   const setLayerArrows = useStore((s) => s.setLayerArrows);
+  const setLayerFlowPulse = useStore((s) => s.setLayerFlowPulse);
 
   const [selectedLayer, setSelectedLayer] = useState<string>(() => layerOrder[0] ?? '');
   const [mode, setMode] = useState<SymbologyMode>(null);
+  // Force re-render counter — bumped after actions that change the selected layer's config
+  const [, setTick] = useState(0);
+  const bump = useCallback(() => setTick((t) => t + 1), []);
 
+  const layers = useStore.getState().layers;
   const orderedLayers = layerOrder.filter((n) => Boolean(layers[n]));
   const layerConfig = selectedLayer ? layers[selectedLayer] : null;
 
@@ -68,6 +74,7 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
       if (layerConfig.symbology) {
         setLayerSymbology(selectedLayer, null);
       }
+      bump();
 
       const refs = getLayerRefs(selectedLayer);
       if (refs) {
@@ -91,9 +98,24 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
             setLayerRefs(selectedLayer, { ...refs, arrowDecorators: newDecorators });
           }
         }
+
+        // Refresh flow pulse if active
+        if (layerConfig.showFlowPulse) {
+          const map = mapRef.current;
+          if (map) {
+            const updatedRefs = getLayerRefs(selectedLayer);
+            if (updatedRefs) {
+              const newCleanup = toggleFlowPulse(
+                map, selectedLayer, updatedRefs.leafletLayer,
+                newColor, true, updatedRefs.flowPulseCleanup
+              );
+              setLayerRefs(selectedLayer, { ...updatedRefs, flowPulseCleanup: newCleanup });
+            }
+          }
+        }
       }
     },
-    [selectedLayer, layerConfig, setLayerColor, setLayerSymbology, mapRef]
+    [selectedLayer, layerConfig, setLayerColor, setLayerSymbology, mapRef, bump]
   );
 
   // ---- Flow direction arrows toggle ----------------------------------------
@@ -114,13 +136,35 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
 
     setLayerRefs(selectedLayer, { ...refs, arrowDecorators: newDecorators });
     setLayerArrows(selectedLayer, willShow);
-  }, [selectedLayer, layerConfig, setLayerArrows, mapRef]);
+    bump();
+  }, [selectedLayer, layerConfig, setLayerArrows, mapRef, bump]);
+
+  // ---- Flow pulse toggle ----------------------------------------------------
+
+  const handleFlowPulseToggle = useCallback(() => {
+    if (!selectedLayer || !layerConfig) return;
+    const map = mapRef.current;
+    if (!map) return;
+
+    const refs = getLayerRefs(selectedLayer);
+    if (!refs) return;
+
+    const willShow = !layerConfig.showFlowPulse;
+    const newCleanup = toggleFlowPulse(
+      map, selectedLayer, refs.leafletLayer,
+      layerConfig.color, willShow, refs.flowPulseCleanup
+    );
+
+    setLayerRefs(selectedLayer, { ...refs, flowPulseCleanup: newCleanup });
+    setLayerFlowPulse(selectedLayer, willShow);
+    bump();
+  }, [selectedLayer, layerConfig, setLayerFlowPulse, mapRef, bump]);
 
   // ---- Reset ---------------------------------------------------------------
 
   const handleReset = () => {
     if (!selectedLayer) return;
-    const layer = layers[selectedLayer];
+    const layer = useStore.getState().layers[selectedLayer];
     if (!layer) return;
 
     const refs = getLayerRefs(selectedLayer);
@@ -137,6 +181,7 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
 
     setLayerSymbology(selectedLayer, null);
     setMode(null);
+    bump();
   };
 
   // Clicking a mode always opens it (no toggle-off); clicking another switches
@@ -191,6 +236,31 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
         >
           <span style={{ fontSize: 14 }}>{layerConfig.showArrows ? '\u27A4' : '\u2192'}</span>
           {layerConfig.showArrows ? 'Flow Arrows ON' : 'Show Flow Direction'}
+        </button>
+      )}
+
+      {/* Flow pulse — line layers only */}
+      {selectedLayer && layerConfig && isLine && (
+        <button
+          onClick={handleFlowPulseToggle}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            padding: '5px 8px',
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 3,
+            border: `1px solid ${layerConfig.showFlowPulse ? '#42d4f4' : '#3a3a5a'}`,
+            background: layerConfig.showFlowPulse ? '#1e3a4a' : '#2d2d44',
+            color: layerConfig.showFlowPulse ? '#42d4f4' : '#bbb',
+            cursor: 'pointer',
+            transition: 'all 0.15s',
+          }}
+        >
+          <span style={{ fontSize: 14 }}>{layerConfig.showFlowPulse ? '\u2248' : '\u223C'}</span>
+          {layerConfig.showFlowPulse ? 'Flow Pulse ON' : 'Show Flow Pulse'}
         </button>
       )}
 

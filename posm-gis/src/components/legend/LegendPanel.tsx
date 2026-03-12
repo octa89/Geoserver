@@ -486,12 +486,17 @@ function LayerLegendBlock({ name }: { name: string }) {
 }
 
 export function LegendPanel() {
-  const layers = useStore((s) => s.layers);
-  const layerOrder = useStore((s) => s.layerOrder);
+  // Subscribe to a visibility-only selector so we re-render when layers are
+  // shown/hidden, but NOT on every color/symbology/filter change.
+  const visibleSet = useStore((s) => {
+    const vis: string[] = [];
+    for (const n of s.layerOrder) {
+      if (s.layers[n]?.visible) vis.push(n);
+    }
+    return vis.join(',');
+  });
 
-  const visibleLayers = [...layerOrder]
-    .reverse()
-    .filter((name) => layers[name]?.visible);
+  const visibleLayers = visibleSet.split(',').filter(Boolean).reverse();
 
   if (visibleLayers.length === 0) {
     return (

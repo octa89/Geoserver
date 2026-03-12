@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { LayerConfig, Bookmark } from '../types/layer';
 import type { SymbologyConfig } from '../types/symbology';
+import type { SavedSearch } from '../types/session';
 import type { BasemapKey } from '../config/constants';
 
 export interface POSMStore {
@@ -25,6 +26,7 @@ export interface POSMStore {
   currentWorkspace: string;
   workspaces: string[];
   bookmarks: Bookmark[];
+  savedSearches: SavedSearch[];
 
   // Actions
   setCenter: (center: [number, number]) => void;
@@ -47,6 +49,7 @@ export interface POSMStore {
   setLayerLabelField: (name: string, field: string | null) => void;
   setLayerClustered: (name: string, clustered: boolean) => void;
   setLayerArrows: (name: string, show: boolean) => void;
+  setLayerFlowPulse: (name: string, show: boolean) => void;
   setLayerPopupConfig: (name: string, config: import('../types/layer').PopupConfig | null) => void;
   setLayerPointSymbol: (name: string, pointSymbol: string) => void;
   setLayerAgeConfig: (name: string, ageConfig: import('../types/layer').AgeConfig | null) => void;
@@ -57,6 +60,11 @@ export interface POSMStore {
   addBookmark: (bookmark: Bookmark) => void;
   removeBookmark: (id: string) => void;
   setBookmarks: (bookmarks: Bookmark[]) => void;
+
+  // Saved searches
+  addSavedSearch: (search: SavedSearch) => void;
+  removeSavedSearch: (id: string) => void;
+  setSavedSearches: (searches: SavedSearch[]) => void;
 
   // Bulk
   resetLayers: () => void;
@@ -78,6 +86,7 @@ export const useStore = create<POSMStore>((set) => ({
   currentWorkspace: '',
   workspaces: [],
   bookmarks: [],
+  savedSearches: [],
 
   // Map actions
   setCenter: (center) => set({ center }),
@@ -133,6 +142,9 @@ export const useStore = create<POSMStore>((set) => ({
   setLayerArrows: (name, show) => set((state) => ({
     layers: { ...state.layers, [name]: { ...state.layers[name], showArrows: show } },
   })),
+  setLayerFlowPulse: (name, show) => set((state) => ({
+    layers: { ...state.layers, [name]: { ...state.layers[name], showFlowPulse: show } },
+  })),
   setLayerPopupConfig: (name, config) => set((state) => ({
     layers: { ...state.layers, [name]: { ...state.layers[name], popupConfig: config } },
   })),
@@ -157,6 +169,15 @@ export const useStore = create<POSMStore>((set) => ({
     bookmarks: state.bookmarks.filter(b => b.id !== id),
   })),
   setBookmarks: (bookmarks) => set({ bookmarks }),
+
+  // Saved searches
+  addSavedSearch: (search) => set((state) => ({
+    savedSearches: [...state.savedSearches, search],
+  })),
+  removeSavedSearch: (id) => set((state) => ({
+    savedSearches: state.savedSearches.filter((s) => s.id !== id),
+  })),
+  setSavedSearches: (savedSearches) => set({ savedSearches }),
 
   // Reset
   resetLayers: () => set({ layers: {}, layerOrder: [] }),

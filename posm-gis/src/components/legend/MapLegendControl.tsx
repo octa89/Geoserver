@@ -15,11 +15,19 @@ import { darkenColor } from '../../lib/colorUtils';
  * Shows all visible layers with their symbology legend entries.
  */
 export function MapLegendControl() {
-  const layers = useStore((s) => s.layers);
-  const layerOrder = useStore((s) => s.layerOrder);
+  // Subscribe to a visibility-only selector — only re-renders when the set
+  // of visible layers changes, not on every color/symbology/filter change.
+  const visibleSet = useStore((s) => {
+    const vis: string[] = [];
+    for (const n of s.layerOrder) {
+      if (s.layers[n]?.visible) vis.push(n);
+    }
+    return vis.join(',');
+  });
   const [collapsed, setCollapsed] = useState(false);
 
-  const visibleLayers = [...layerOrder].reverse().filter((n) => layers[n]?.visible);
+  const layers = useStore.getState().layers;
+  const visibleLayers = visibleSet.split(',').filter(Boolean).reverse();
 
   // Ref callback: prevent mouse/wheel events from propagating to the Leaflet map.
   // Uses a callback ref so it fires when the DOM element actually mounts (not on
@@ -41,8 +49,7 @@ export function MapLegendControl() {
         top: 10,
         right: 10,
         zIndex: 1000,
-        background: 'rgba(26,26,46,0.95)',
-        backdropFilter: 'blur(8px)',
+        background: 'rgba(26,26,46,0.97)',
         border: '1px solid rgba(66,212,244,0.3)',
         borderRadius: 8,
         boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
@@ -50,7 +57,7 @@ export function MapLegendControl() {
         maxWidth: 360,
         maxHeight: collapsed ? 40 : 'calc(85vh - 40px)',
         overflow: 'hidden',
-        transition: 'all 0.2s ease',
+        transition: 'min-width 0.2s ease, max-height 0.2s ease',
         fontFamily: "'Segoe UI', system-ui, sans-serif",
       }}
     >

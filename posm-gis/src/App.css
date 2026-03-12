@@ -313,58 +313,7 @@ body {
   white-space: nowrap;
 }
 
-/* ---- Filter Panel ---- */
-.filter-panel {
-  font-size: 12px;
-}
-.filter-row {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
-  align-items: center;
-}
-.filter-row select, .filter-row input {
-  background: #0f3460;
-  border: 1px solid rgba(66,212,244,0.2);
-  color: #e0e0e0;
-  border-radius: 3px;
-  padding: 4px 6px;
-  font-size: 11px;
-}
-.filter-add-btn {
-  background: #42d4f4;
-  color: #0f3460;
-  border: none;
-  border-radius: 4px;
-  padding: 5px 12px;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-top: 4px;
-}
-.filter-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  background: rgba(66,212,244,0.12);
-  border: 1px solid rgba(66,212,244,0.3);
-  color: #42d4f4;
-  border-radius: 12px;
-  padding: 2px 8px;
-  font-size: 11px;
-  margin: 2px;
-}
-.filter-chip-remove {
-  background: none;
-  border: none;
-  color: #e94560;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 0 2px;
-  line-height: 1;
-}
-
-/* ---- Filter Autocomplete ---- */
+/* ---- Filter Autocomplete (shared by advanced search) ---- */
 .filter-autocomplete-wrap {
   position: relative;
 }
@@ -398,11 +347,6 @@ body {
   background: #0f3460;
   color: #fff;
 }
-.filter-row input:focus { outline: none; border-color: #e94560; }
-.filter-row input[type="date"] {
-  color-scheme: dark;
-}
-
 /* ---- Popup ---- */
 .posm-popup .leaflet-popup-content-wrapper {
   border-radius: 8px;
@@ -691,14 +635,12 @@ body {
 .sidebar-resize-handle {
   background: #42d4f4 !important;
   width: 4px !important;
-  opacity: 0.6;
-  animation: handle-pulse 2s ease-in-out infinite;
+  opacity: 0.3;
   transition: opacity 0.2s, width 0.2s;
 }
 .sidebar-resize-handle:hover {
   width: 6px !important;
   opacity: 1;
-  animation: none;
 }
 @keyframes handle-pulse {
   0%, 100% { opacity: 0.3; }
@@ -741,6 +683,11 @@ body {
 /* ---- Mobile overlay backdrop ---- */
 .sidebar-mobile-backdrop {
   display: none;
+}
+
+/* Raise Leaflet zoom controls above the bottom search panel (52px + gap) */
+.leaflet-control-zoom {
+  margin-bottom: 62px !important;
 }
 
 /* ====================================================================
@@ -817,16 +764,6 @@ body {
     margin-top: 2px;
   }
 
-  /* Filter rows: allow wrapping */
-  .filter-row {
-    flex-wrap: wrap;
-  }
-  .filter-row select,
-  .filter-row input {
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-
   /* Symbology mode grid: 2 columns on mobile */
   .symbology-mode-grid {
     grid-template-columns: 1fr 1fr !important;
@@ -859,7 +796,7 @@ body {
 
   /* Leaflet zoom controls: raised above phone bottom bar, semi-transparent */
   .leaflet-control-zoom {
-    margin-bottom: calc(48px + env(safe-area-inset-bottom, 0px)) !important;
+    margin-bottom: calc(62px + env(safe-area-inset-bottom, 0px)) !important;
     margin-right: 8px !important;
     opacity: 0.75 !important;
   }
@@ -881,10 +818,6 @@ body {
   }
   .layer-item button {
     min-height: 28px;
-  }
-  .filter-add-btn {
-    min-height: 36px;
-    font-size: 13px !important;
   }
   .basemap-btn {
     min-height: 32px;

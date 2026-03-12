@@ -32,15 +32,42 @@ export function isUrl(str: string): boolean {
 }
 
 /**
+ * Detect ISO 8601 date strings from GeoServer (e.g. "2024-03-12T15:30:00.000Z",
+ * "2024-03-12T15:30:00+00:00", or date-only "2024-03-12").
+ */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$/;
+
+function isDateString(str: string): boolean {
+  if (!ISO_DATE_RE.test(str)) return false;
+  const d = new Date(str);
+  return !isNaN(d.getTime());
+}
+
+function formatDate(str: string): string {
+  const d = new Date(str);
+  if (str.includes('T')) {
+    return d.toLocaleString(undefined, {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+  }
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+  });
+}
+
+/**
  * Format a feature property value for popup display:
  * - Image URLs -> <img> tag
  * - Other URLs -> <a> anchor tag (opens in new tab)
+ * - ISO date strings -> human-readable date/time
  * - Everything else -> HTML-escaped plain text
  */
 export function formatPopupValue(val: unknown): string {
   if (val === null || val === undefined) return '';
 
   const str = String(val);
+  if (isDateString(str)) return escapeHtml(formatDate(str));
   if (!isUrl(str)) return escapeHtml(str);
 
   const escaped = escapeHtml(str);

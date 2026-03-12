@@ -169,6 +169,7 @@ export function useLayers(mapRef: React.RefObject<L.Map | null>) {
             pointSymbol: 'circle',
             clustered: clusterGroup !== null,
             showArrows: false,
+            showFlowPulse: false,
             labelField: null,
             fields,
             featureCount: geojson.features.length,
@@ -187,6 +188,7 @@ export function useLayers(mapRef: React.RefObject<L.Map | null>) {
             clusterGroup,
             geojson,
             arrowDecorators: [],
+            flowPulseCleanup: null,
             labelManager: null,
           });
         });

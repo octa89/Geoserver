@@ -9,7 +9,7 @@ import { detectGeomType } from '../lib/fieldUtils';
 import { defaultStyle, recolorSymbology } from '../lib/symbology';
 import { createPointMarker } from '../lib/markers';
 import { darkenColor } from '../lib/colorUtils';
-import { buildCqlFilter } from '../components/filter/filterUtils';
+import { buildCqlFilter } from '../lib/cqlUtils';
 import { smartSortFields, formatPopupValue, escapeHtml } from '../lib/popupUtils';
 import { applyLabels, computeLabelMinZoom, initLabelMoveListener, removeLabels } from '../lib/labels';
 import type { LabelManager } from '../lib/labels';

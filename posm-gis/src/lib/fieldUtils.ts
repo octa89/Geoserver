@@ -37,3 +37,24 @@ export function detectGeomType(geojson: FeatureCollection): string {
   }
   return 'Unknown';
 }
+
+/**
+ * Extract all unique non-empty values for a given property field.
+ * Returns a locale-aware sorted array (numeric-aware).
+ * Used by both FilterForm (sidebar) and AdvancedSearchForm (search panel).
+ */
+export function extractUniqueValues(
+  geojson: FeatureCollection | undefined,
+  field: string
+): string[] {
+  if (!geojson?.features) return [];
+  const valSet = new Set<string>();
+  for (const f of geojson.features) {
+    const v = f.properties?.[field];
+    if (v === null || v === undefined || v === '') continue;
+    valSet.add(String(v));
+  }
+  return Array.from(valSet).sort((a, b) =>
+    a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
+  );
+}

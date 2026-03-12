@@ -445,7 +445,7 @@ export function initLabelMoveListener(
   getLabeledLayers: () => LabeledLayerRef[]
 ): () => void {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-  const DEBOUNCE_MS = 80;
+  const DEBOUNCE_MS = 150;
 
   function onMove() {
     if (debounceTimer !== null) clearTimeout(debounceTimer);

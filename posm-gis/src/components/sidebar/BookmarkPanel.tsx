@@ -75,8 +75,8 @@ export function BookmarkPanel({ mapRef }: BookmarkPanelProps) {
   const bookmarks = useStore((s) => s.bookmarks);
   const addBookmark = useStore((s) => s.addBookmark);
   const removeBookmark = useStore((s) => s.removeBookmark);
-  const center = useStore((s) => s.center);
-  const zoom = useStore((s) => s.zoom);
+  // DO NOT subscribe to center/zoom — they change on every pan/zoom and would
+  // cause this component to re-render constantly. Read imperatively when saving.
 
   const [isAdding, setIsAdding] = useState(false);
   const [bookmarkName, setBookmarkName] = useState('');
@@ -92,6 +92,7 @@ export function BookmarkPanel({ mapRef }: BookmarkPanelProps) {
     const name = bookmarkName.trim();
     if (!name) return;
 
+    const { center, zoom } = useStore.getState();
     const bookmark: Bookmark = {
       id: Date.now().toString(36),
       name,
@@ -102,7 +103,7 @@ export function BookmarkPanel({ mapRef }: BookmarkPanelProps) {
     addBookmark(bookmark);
     setIsAdding(false);
     setBookmarkName('');
-  }, [bookmarkName, center, zoom, addBookmark]);
+  }, [bookmarkName, addBookmark]);
 
   const handleCancelSave = useCallback(() => {
     setIsAdding(false);

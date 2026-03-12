@@ -10,15 +10,16 @@ import { useStore } from '../store';
 import { getAllLayerRefs, getLayerRefs, setLayerRefs, clearRegistry } from '../store/leafletRegistry';
 import { initLabelMoveListener, computeLabelMinZoom, removeLabels, applyLabels, updateLabelVisibility } from '../lib/labels';
 import { recolorSymbology, resetSymbology, refreshClusterAfterSymbology } from '../lib/symbology';
+import { enableFlowPulse } from '../lib/sewerFlow';
 import { BASEMAPS, DEFAULT_CENTER, DEFAULT_ZOOM, MAX_ZOOM, MAX_NATIVE_ZOOM } from '../config/constants';
 import { logout, getUserWorkspaces } from '../config/auth';
 import type { AppUser } from '../config/auth';
 import { Sidebar } from '../components/sidebar/Sidebar';
 import { WorkspaceModal } from '../components/sidebar/WorkspaceModal';
 import { MapLegendControl } from '../components/legend/MapLegendControl';
+import { SearchPanel } from '../components/search/SearchPanel';
 import { useLayers } from '../hooks/useLayers';
 import { useSession, suppressAutoSave, unsuppressAutoSave } from '../hooks/useSession';
-import { useFilters } from '../hooks/useFilters';
 
 interface MapPageProps {
   user: AppUser;
@@ -40,8 +41,6 @@ export function MapPage({ user }: MapPageProps) {
 
   const { loadAllLayers } = useLayers(mapRef);
   const { loadSession, autoSave } = useSession();
-  const { applyFilters } = useFilters(mapRef);
-
   // Workspace modal state
   const [wsModalOpen, setWsModalOpen] = useState(false);
   const [wsModalCancellable, setWsModalCancellable] = useState(false);
@@ -163,6 +162,9 @@ export function MapPage({ user }: MapPageProps) {
         for (const decorator of refs.arrowDecorators) {
           if (map.hasLayer(decorator)) map.removeLayer(decorator);
         }
+        if (refs.flowPulseCleanup) {
+          refs.flowPulseCleanup();
+        }
         if (refs.labelManager) {
           removeLabels(map, refs.labelManager);
         }
@@ -195,7 +197,6 @@ export function MapPage({ user }: MapPageProps) {
       // Reconcile Leaflet map with restored session state
       if (savedConfig) {
         const layersAfterRestore = useStore.getState().layers;
-        const filteredLayerNames: string[] = [];
 
         for (const [layerName, cfg] of Object.entries(layersAfterRestore)) {
           const refs = getLayerRefs(layerName);
@@ -205,12 +206,6 @@ export function MapPage({ user }: MapPageProps) {
           if (!cfg.visible) {
             const toHide = refs.clusterGroup ?? refs.leafletLayer;
             if (map.hasLayer(toHide)) map.removeLayer(toHide);
-          }
-
-          // Layers with filters: applyFilters handles symbology + labels
-          if (cfg.activeFilters && cfg.activeFilters.length > 0) {
-            filteredLayerNames.push(layerName);
-            continue;
           }
 
           // Apply saved symbology to the Leaflet layer — use recolorSymbology
@@ -243,12 +238,21 @@ export function MapPage({ user }: MapPageProps) {
             updateLabelVisibility(map, mgr, map.getZoom(), cfg.visible, minZoom);
             setLayerRefs(layerName, { ...refs, labelManager: mgr });
           }
+
+          // Defer flow pulse restore so it doesn't block session load
+          if (cfg.showFlowPulse) {
+            const deferredLayerName = layerName;
+            const deferredColor = cfg.color;
+            setTimeout(() => {
+              const updatedRefs = getLayerRefs(deferredLayerName);
+              if (updatedRefs) {
+                const cleanup = enableFlowPulse(map, deferredLayerName, updatedRefs.leafletLayer, deferredColor);
+                setLayerRefs(deferredLayerName, { ...updatedRefs, flowPulseCleanup: cleanup });
+              }
+            }, 100);
+          }
         }
 
-        // Re-apply filters (re-fetches filtered GeoJSON + symbology + labels)
-        if (filteredLayerNames.length > 0) {
-          await Promise.allSettled(filteredLayerNames.map((n) => applyFilters(n)));
-        }
       }
 
       // Set up auto-save (clean up previous if switching)
@@ -260,7 +264,7 @@ export function MapPage({ user }: MapPageProps) {
       // Re-enable auto-save now that load + restore is fully complete
       unsuppressAutoSave();
     }
-  }, [loadAllLayers, loadSession, autoSave, applyFilters, resetLayers, setCurrentWorkspace, setWorkspaces]);
+  }, [loadAllLayers, loadSession, autoSave, resetLayers, setCurrentWorkspace, setWorkspaces]);
 
   // Workspace modal selection handler
   const handleWorkspaceSelect = useCallback((workspaces: string[]) => {
@@ -333,6 +337,9 @@ export function MapPage({ user }: MapPageProps) {
         {/* Floating legend control */}
         <MapLegendControl />
       </div>
+
+      {/* Search Attribute Table Panel */}
+      <SearchPanel mapRef={mapRef} />
 
       {/* Loading overlay */}
       {loading && (

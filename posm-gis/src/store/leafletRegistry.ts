@@ -11,6 +11,7 @@ export interface LeafletLayerRefs {
   clusterGroup: L.MarkerClusterGroup | null;
   geojson: GeoJSON.FeatureCollection;
   arrowDecorators: L.Layer[];
+  flowPulseCleanup: (() => void) | null;
   labelManager: LabelManager | null;
 }
 

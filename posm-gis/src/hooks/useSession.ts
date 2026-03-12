@@ -48,10 +48,12 @@ export function useSession() {
   const setLayerColor = useStore((s) => s.setLayerColor);
   const setLayerClustered = useStore((s) => s.setLayerClustered);
   const setLayerArrows = useStore((s) => s.setLayerArrows);
+  const setLayerFlowPulse = useStore((s) => s.setLayerFlowPulse);
   const setLayerPopupConfig = useStore((s) => s.setLayerPopupConfig);
   const setLayerPointSymbol = useStore((s) => s.setLayerPointSymbol);
   const setLayerAgeConfig = useStore((s) => s.setLayerAgeConfig);
   const setLayerOrder = useStore((s) => s.setLayerOrder);
+  const setSavedSearches = useStore((s) => s.setSavedSearches);
 
   // ---- saveSession ----------------------------------------------------------
 
@@ -101,6 +103,11 @@ export function useSession() {
       setBookmarks(config.bookmarks);
     }
 
+    // Apply saved searches
+    if (Array.isArray(config.savedSearches)) {
+      setSavedSearches(config.savedSearches);
+    }
+
     // Apply per-layer state for every layer that already exists in the store
     if (config.layers) {
       const currentLayers = useStore.getState().layers;
@@ -116,6 +123,7 @@ export function useSession() {
         if (saved.labelField !== undefined) setLayerLabelField(layerName, saved.labelField);
         if (saved.clustered !== undefined) setLayerClustered(layerName, saved.clustered);
         if (saved.showArrows !== undefined) setLayerArrows(layerName, saved.showArrows);
+        if (saved.showFlowPulse !== undefined) setLayerFlowPulse(layerName, saved.showFlowPulse);
         if (saved.popupConfig !== undefined) setLayerPopupConfig(layerName, saved.popupConfig);
         if (saved.pointSymbol) setLayerPointSymbol(layerName, saved.pointSymbol);
         if (saved.ageConfig !== undefined) setLayerAgeConfig(layerName, saved.ageConfig);
@@ -148,10 +156,12 @@ export function useSession() {
     setLayerColor,
     setLayerClustered,
     setLayerArrows,
+    setLayerFlowPulse,
     setLayerPopupConfig,
     setLayerPointSymbol,
     setLayerAgeConfig,
     setLayerOrder,
+    setSavedSearches,
   ]);
 
   // ---- autoSave setup -------------------------------------------------------
@@ -164,13 +174,35 @@ export function useSession() {
       unsubscribeRef.current();
     }
 
-    const unsub = useStore.subscribe(() => {
-      if (_saveSuppressed) return; // skip during load sequence
+    // Only auto-save when layer config, layerOrder, bookmarks, or basemap change
+    // — skip UI-only state changes (sidebarOpen, loading, etc.)
+    let prevLayers = useStore.getState().layers;
+    let prevOrder = useStore.getState().layerOrder;
+    let prevBookmarks = useStore.getState().bookmarks;
+    let prevBasemap = useStore.getState().basemap;
+    let prevSavedSearches = useStore.getState().savedSearches;
+
+    const unsub = useStore.subscribe((state) => {
+      if (_saveSuppressed) return;
+      if (
+        state.layers === prevLayers &&
+        state.layerOrder === prevOrder &&
+        state.bookmarks === prevBookmarks &&
+        state.basemap === prevBasemap &&
+        state.savedSearches === prevSavedSearches
+      ) return; // nothing saveable changed
+
+      prevLayers = state.layers;
+      prevOrder = state.layerOrder;
+      prevBookmarks = state.bookmarks;
+      prevBasemap = state.basemap;
+      prevSavedSearches = state.savedSearches;
+
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current);
       }
       autoSaveTimer.current = setTimeout(() => {
-        if (_saveSuppressed) return; // re-check at fire time
+        if (_saveSuppressed) return;
         saveSession();
       }, AUTO_SAVE_DELAY_MS);
     });

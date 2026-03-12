@@ -16,20 +16,22 @@ interface LayerPanelProps {
  * A text search input at the top filters by layer label (case-insensitive).
  */
 export function LayerPanel({ mapRef }: LayerPanelProps) {
-  const layers = useStore((s) => s.layers);
+  // Subscribe only to layerOrder (stable array). DO NOT subscribe to `layers`
+  // — it changes on every store update and would cascade re-renders.
   const layerOrder = useStore((s) => s.layerOrder);
 
   const [search, setSearch] = useState('');
 
-  // Filter layerOrder by the search term
+  // Filter layerOrder by the search term — read layers imperatively
   const filteredNames = useMemo(() => {
+    const layers = useStore.getState().layers;
     const term = search.trim().toLowerCase();
     if (!term) return layerOrder;
     return layerOrder.filter((name) => {
       const label = layers[name]?.label ?? name;
       return label.toLowerCase().includes(term);
     });
-  }, [search, layerOrder, layers]);
+  }, [search, layerOrder]);
 
   return (
     <div className="layer-panel">

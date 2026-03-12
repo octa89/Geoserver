@@ -5,7 +5,6 @@ import { useStore } from '../../store';
 import { BASEMAPS } from '../../config/constants';
 import type { BasemapKey } from '../../config/constants';
 import { LayerPanel } from './LayerPanel';
-import { FilterPanel } from '../filter/FilterPanel';
 import { SymbologyPanel } from '../symbology/SymbologyPanel';
 import { LegendPanel } from '../legend/LegendPanel';
 import { BookmarkPanel } from './BookmarkPanel';
@@ -67,6 +66,13 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace, mo
   const startX = useRef(0);
   const startWidth = useRef(0);
   const sidebarRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef(0);
+
+  // Publish sidebar width as a CSS custom property so SearchPanel can offset its left edge
+  useEffect(() => {
+    const actualWidth = sidebarOpen ? width : 40;
+    document.documentElement.style.setProperty('--sidebar-actual-width', `${actualWidth}px`);
+  }, [sidebarOpen, width]);
 
   // ---- Drag-to-resize logic -----------------------------------------------
 
@@ -80,17 +86,23 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace, mo
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return;
-      const delta = e.clientX - startX.current;
-      const next = Math.min(
-        SIDEBAR_MAX_WIDTH,
-        Math.max(SIDEBAR_MIN_WIDTH, startWidth.current + delta)
-      );
-      setWidth(next);
+      // Batch width updates with RAF to avoid frame thrashing
+      cancelAnimationFrame(rafRef.current);
+      const clientX = e.clientX;
+      rafRef.current = requestAnimationFrame(() => {
+        const delta = clientX - startX.current;
+        const next = Math.min(
+          SIDEBAR_MAX_WIDTH,
+          Math.max(SIDEBAR_MIN_WIDTH, startWidth.current + delta)
+        );
+        setWidth(next);
+      });
     };
 
     const onMouseUp = () => {
       if (!isDragging.current) return;
       isDragging.current = false;
+      cancelAnimationFrame(rafRef.current);
       // Notify Leaflet to recalculate its container size
       mapRef.current?.invalidateSize();
     };
@@ -100,6 +112,7 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace, mo
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      cancelAnimationFrame(rafRef.current);
     };
   }, [mapRef]);
 
@@ -130,7 +143,7 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace, mo
         color: '#e0e0e0',
         overflow: 'hidden',
         flexShrink: 0,
-        zIndex: 1000,
+        zIndex: 500,
       }}
     >
       {/* ----- Header -------------------------------------------------------- */}
@@ -382,25 +395,6 @@ export function Sidebar({ mapRef, user, onLogout, isAdmin, onSwitchWorkspace, mo
               Layers
             </h4>
             <LayerPanel mapRef={mapRef} />
-          </section>
-
-          {/* Filters panel */}
-          <section
-            className="sidebar-section sidebar-section--filters"
-            style={{ padding: '8px 10px', borderBottom: '1px solid #2d2d44' }}
-          >
-            <h4
-              style={{
-                margin: '0 0 6px 0',
-                fontSize: 12,
-                textTransform: 'uppercase',
-                letterSpacing: 0.8,
-                color: '#888',
-              }}
-            >
-              Filters
-            </h4>
-            <FilterPanel mapRef={mapRef} />
           </section>
 
           {/* Symbology panel */}
