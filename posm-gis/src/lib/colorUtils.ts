@@ -115,19 +115,39 @@ export function isDateField(
   geojson: FeatureCollection,
   field: string
 ): boolean {
-  // Matches YYYY-MM-DD optionally followed by time component
-  const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.Z+-]*)?$/;
+  // Common date patterns:
+  // YYYY-MM-DD, YYYY-MM-DDThh:mm:ss...     (ISO 8601)
+  // MM/DD/YYYY, M/D/YYYY                    (US format)
+  // DD/MM/YYYY, D/M/YYYY                    (EU format — ambiguous, caught by same regex)
+  // YYYY/MM/DD                              (alt ISO)
+  // MM-DD-YYYY                              (US with dashes)
+  // Also detect by field name heuristic
+  const DATE_RES = [
+    /^\d{4}-\d{1,2}-\d{1,2}([ T][\d:.Z+-]*)?$/,   // ISO: 2024-01-15, 2024-1-5T00:00:00Z
+    /^\d{1,2}\/\d{1,2}\/\d{2,4}([ T][\d:.Z+-]*)?$/, // US/EU: 1/15/2024, 01/15/24
+    /^\d{4}\/\d{1,2}\/\d{1,2}$/,                     // Alt: 2024/01/15
+    /^\d{1,2}-\d{1,2}-\d{2,4}$/,                     // US dashes: 01-15-2024
+  ];
+
+  // Field name heuristic — names containing "date", "time", "dt" strongly suggest dates
+  const nameLower = field.toLowerCase();
+  const nameHint = /date|_dt$|_dt_|timestamp|inspdate|^dt_/.test(nameLower);
 
   const samples = geojson.features
     .slice(0, 100)
     .map((f) => f.properties?.[field])
     .filter((v) => v !== null && v !== undefined);
 
-  if (samples.length === 0) return false;
+  if (samples.length === 0) return nameHint;
 
-  const dateCount = samples.filter(
-    (v) => typeof v === 'string' && ISO_DATE_RE.test(v.trim())
-  ).length;
+  const dateCount = samples.filter((v) => {
+    if (typeof v !== 'string') return false;
+    const trimmed = v.trim();
+    if (trimmed === '') return false;
+    return DATE_RES.some((re) => re.test(trimmed));
+  }).length;
 
-  return dateCount / samples.length > 0.8;
+  // If field name hints at date, use a lower threshold (50%); otherwise 80%
+  const threshold = nameHint ? 0.5 : 0.8;
+  return dateCount / samples.length > threshold;
 }

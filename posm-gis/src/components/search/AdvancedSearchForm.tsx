@@ -103,6 +103,7 @@ export function AdvancedSearchForm({
   }, [showSuggestions, filteredSuggestions.length]);
 
   const isBetween = operator === 'BETWEEN';
+  const isNullOp = operator === 'IS_NULL' || operator === 'IS_NOT_NULL';
   const inputType = currentIsDate ? 'date' : 'text';
 
   const getLayerLabel = useCallback(
@@ -127,7 +128,8 @@ export function AdvancedSearchForm({
 
   const handleAdd = useCallback(() => {
     const trimmed = value.trim();
-    if (!trimmed || !selectedLayer) return;
+    if (!isNullOp && !trimmed) return;
+    if (!selectedLayer) return;
     if (isBetween && !valueEnd.trim()) return;
 
     const cond: SearchCondition = {
@@ -135,7 +137,7 @@ export function AdvancedSearchForm({
       layerName: selectedLayer,
       field,
       operator,
-      value: trimmed,
+      value: isNullOp ? '' : trimmed,
       ...(isBetween ? { valueEnd: valueEnd.trim() } : {}),
     };
 
@@ -226,6 +228,9 @@ export function AdvancedSearchForm({
     if (c.operator === 'BETWEEN') {
       return `${f} ${op} ${c.value}–${c.valueEnd}`;
     }
+    if (c.operator === 'IS_NULL' || c.operator === 'IS_NOT_NULL') {
+      return `${f} ${op}`;
+    }
     return `${f} ${op} ${c.value}`;
   };
 
@@ -276,76 +281,78 @@ export function AdvancedSearchForm({
           ))}
         </select>
 
-        <div className="adv-search__values">
-          <div
-            className="filter-autocomplete-wrap"
-            style={{ flex: 1, position: 'relative' }}
-          >
-            <input
-              ref={valueRef}
-              className="adv-search__input"
-              type={inputType}
-              placeholder={isBetween ? 'From…' : 'Value…'}
-              value={value}
-              onChange={(e) => {
-                setValue(e.target.value);
-                if (!currentIsDate && uniqueValues.length > 0)
-                  setShowSuggestions(true);
-              }}
-              onKeyDown={handleKeyDown}
-              onFocus={handleInputFocus}
-              onBlur={handleInputBlur}
-              autoComplete="off"
-              spellCheck={false}
-            />
-            {!currentIsDate &&
-              showSuggestions &&
-              filteredSuggestions.length > 0 &&
-              suggestionsPos && (
-                <div
-                  ref={suggestionsRef}
-                  className="filter-suggestions open adv-search__suggestions"
-                  style={{
-                    position: 'fixed',
-                    top: suggestionsPos.top,
-                    left: suggestionsPos.left,
-                    width: suggestionsPos.width,
-                  }}
-                >
-                  {filteredSuggestions.map((val, i) => (
-                    <div
-                      key={`${val}-${i}`}
-                      className="filter-suggestion-item"
-                      title={val}
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        handleSuggestionClick(val);
-                      }}
-                    >
-                      {val}
-                    </div>
-                  ))}
-                </div>
-              )}
-          </div>
-          {isBetween && (
+        {!isNullOp && (
+          <div className="adv-search__values">
             <div
               className="filter-autocomplete-wrap"
               style={{ flex: 1, position: 'relative' }}
             >
               <input
+                ref={valueRef}
                 className="adv-search__input"
                 type={inputType}
-                placeholder="To…"
-                value={valueEnd}
-                onChange={(e) => setValueEnd(e.target.value)}
+                placeholder={isBetween ? 'From…' : 'Value…'}
+                value={value}
+                onChange={(e) => {
+                  setValue(e.target.value);
+                  if (!currentIsDate && uniqueValues.length > 0)
+                    setShowSuggestions(true);
+                }}
                 onKeyDown={handleKeyDown}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
                 autoComplete="off"
                 spellCheck={false}
               />
+              {!currentIsDate &&
+                showSuggestions &&
+                filteredSuggestions.length > 0 &&
+                suggestionsPos && (
+                  <div
+                    ref={suggestionsRef}
+                    className="filter-suggestions open adv-search__suggestions"
+                    style={{
+                      position: 'fixed',
+                      top: suggestionsPos.top,
+                      left: suggestionsPos.left,
+                      width: suggestionsPos.width,
+                    }}
+                  >
+                    {filteredSuggestions.map((val, i) => (
+                      <div
+                        key={`${val}-${i}`}
+                        className="filter-suggestion-item"
+                        title={val}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          handleSuggestionClick(val);
+                        }}
+                      >
+                        {val}
+                      </div>
+                    ))}
+                  </div>
+                )}
             </div>
-          )}
-        </div>
+            {isBetween && (
+              <div
+                className="filter-autocomplete-wrap"
+                style={{ flex: 1, position: 'relative' }}
+              >
+                <input
+                  className="adv-search__input"
+                  type={inputType}
+                  placeholder="To…"
+                  value={valueEnd}
+                  onChange={(e) => setValueEnd(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+              </div>
+            )}
+          </div>
+        )}
 
         <button
           className="adv-search__add-btn"

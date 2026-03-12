@@ -17,6 +17,20 @@ function coerceNumeric(val: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function coerceDate(val: string): number | null {
+  const trimmed = val.trim();
+  if (trimmed === '') return null;
+  const ms = Date.parse(trimmed);
+  if (!Number.isNaN(ms)) return ms;
+  const slashParts = trimmed.split('/');
+  if (slashParts.length === 3) {
+    const [a, b, c] = slashParts.map(Number);
+    const d = new Date(c, a - 1, b);
+    if (!Number.isNaN(d.getTime())) return d.getTime();
+  }
+  return null;
+}
+
 interface ConditionLike {
   field: string;
   operator: string;
@@ -26,6 +40,10 @@ interface ConditionLike {
 }
 
 function evaluateCondition(propValue: unknown, cond: ConditionLike): boolean {
+  // Null-checking operators must run before the null guard
+  if (cond.operator === 'IS_NULL') return propValue == null || String(propValue).trim() === '';
+  if (cond.operator === 'IS_NOT_NULL') return propValue != null && String(propValue).trim() !== '';
+
   if (propValue == null) return false;
   const strProp = String(propValue);
   const { operator, value, valueEnd } = cond;
@@ -37,36 +55,54 @@ function evaluateCondition(propValue: unknown, cond: ConditionLike): boolean {
       const nProp = coerceNumeric(strProp);
       const nVal = coerceNumeric(value);
       if (nProp !== null && nVal !== null) return nProp === nVal;
+      const dProp0 = coerceDate(strProp);
+      const dVal0 = coerceDate(value);
+      if (dProp0 !== null && dVal0 !== null) return dProp0 === dVal0;
       return strProp.toLowerCase() === value.toLowerCase();
     }
     case '!=': {
       const nProp = coerceNumeric(strProp);
       const nVal = coerceNumeric(value);
       if (nProp !== null && nVal !== null) return nProp !== nVal;
+      const dProp1 = coerceDate(strProp);
+      const dVal1 = coerceDate(value);
+      if (dProp1 !== null && dVal1 !== null) return dProp1 !== dVal1;
       return strProp.toLowerCase() !== value.toLowerCase();
     }
     case '>': {
       const nProp = coerceNumeric(strProp);
       const nVal = coerceNumeric(value);
       if (nProp !== null && nVal !== null) return nProp > nVal;
+      const dProp2 = coerceDate(strProp);
+      const dVal2 = coerceDate(value);
+      if (dProp2 !== null && dVal2 !== null) return dProp2 > dVal2;
       return strProp.localeCompare(value) > 0;
     }
     case '<': {
       const nProp = coerceNumeric(strProp);
       const nVal = coerceNumeric(value);
       if (nProp !== null && nVal !== null) return nProp < nVal;
+      const dProp3 = coerceDate(strProp);
+      const dVal3 = coerceDate(value);
+      if (dProp3 !== null && dVal3 !== null) return dProp3 < dVal3;
       return strProp.localeCompare(value) < 0;
     }
     case '>=': {
       const nProp = coerceNumeric(strProp);
       const nVal = coerceNumeric(value);
       if (nProp !== null && nVal !== null) return nProp >= nVal;
+      const dProp4 = coerceDate(strProp);
+      const dVal4 = coerceDate(value);
+      if (dProp4 !== null && dVal4 !== null) return dProp4 >= dVal4;
       return strProp.localeCompare(value) >= 0;
     }
     case '<=': {
       const nProp = coerceNumeric(strProp);
       const nVal = coerceNumeric(value);
       if (nProp !== null && nVal !== null) return nProp <= nVal;
+      const dProp5 = coerceDate(strProp);
+      const dVal5 = coerceDate(value);
+      if (dProp5 !== null && dVal5 !== null) return dProp5 <= dVal5;
       return strProp.localeCompare(value) <= 0;
     }
     case 'BETWEEN': {
@@ -76,6 +112,12 @@ function evaluateCondition(propValue: unknown, cond: ConditionLike): boolean {
       const nHi = coerceNumeric(valueEnd);
       if (nProp !== null && nLo !== null && nHi !== null) {
         return nProp >= nLo && nProp <= nHi;
+      }
+      const dPropB = coerceDate(strProp);
+      const dLoB = coerceDate(value);
+      const dHiB = coerceDate(valueEnd);
+      if (dPropB !== null && dLoB !== null && dHiB !== null) {
+        return dPropB >= dLoB && dPropB <= dHiB;
       }
       return strProp.localeCompare(value) >= 0 && strProp.localeCompare(valueEnd) <= 0;
     }

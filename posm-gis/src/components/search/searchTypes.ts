@@ -6,7 +6,9 @@ export type SearchOperator =
   | '<'
   | '>='
   | '<='
-  | 'BETWEEN';
+  | 'BETWEEN'
+  | 'IS_NULL'
+  | 'IS_NOT_NULL';
 
 export interface SearchCondition {
   id: number;
@@ -32,4 +34,6 @@ export const SEARCH_OPERATORS: { value: SearchOperator; label: string }[] = [
   { value: '>=', label: '≥' },
   { value: '<=', label: '≤' },
   { value: 'BETWEEN', label: 'Between' },
+  { value: 'IS_NULL', label: 'Is Null' },
+  { value: 'IS_NOT_NULL', label: 'Is Not Null' },
 ];
