@@ -54,6 +54,8 @@ export function useSession() {
   const setLayerAgeConfig = useStore((s) => s.setLayerAgeConfig);
   const setLayerOrder = useStore((s) => s.setLayerOrder);
   const setSavedSearches = useStore((s) => s.setSavedSearches);
+  const setSearchFilterMode = useStore((s) => s.setSearchFilterMode);
+  const setSearchConditionGroups = useStore((s) => s.setSearchConditionGroups);
 
   // ---- saveSession ----------------------------------------------------------
 
@@ -106,6 +108,14 @@ export function useSession() {
     // Apply saved searches
     if (Array.isArray(config.savedSearches)) {
       setSavedSearches(config.savedSearches);
+    }
+
+    // Apply active search filter
+    if (config.searchFilterMode && config.searchFilterMode !== 'none') {
+      setSearchFilterMode(config.searchFilterMode);
+    }
+    if (Array.isArray(config.searchConditionGroups) && config.searchConditionGroups.length > 0) {
+      setSearchConditionGroups(config.searchConditionGroups);
     }
 
     // Apply per-layer state for every layer that already exists in the store
@@ -162,6 +172,8 @@ export function useSession() {
     setLayerAgeConfig,
     setLayerOrder,
     setSavedSearches,
+    setSearchFilterMode,
+    setSearchConditionGroups,
   ]);
 
   // ---- autoSave setup -------------------------------------------------------
@@ -181,6 +193,8 @@ export function useSession() {
     let prevBookmarks = useStore.getState().bookmarks;
     let prevBasemap = useStore.getState().basemap;
     let prevSavedSearches = useStore.getState().savedSearches;
+    let prevSearchFilterMode = useStore.getState().searchFilterMode;
+    let prevSearchConditionGroups = useStore.getState().searchConditionGroups;
 
     const unsub = useStore.subscribe((state) => {
       if (_saveSuppressed) return;
@@ -189,7 +203,9 @@ export function useSession() {
         state.layerOrder === prevOrder &&
         state.bookmarks === prevBookmarks &&
         state.basemap === prevBasemap &&
-        state.savedSearches === prevSavedSearches
+        state.savedSearches === prevSavedSearches &&
+        state.searchFilterMode === prevSearchFilterMode &&
+        state.searchConditionGroups === prevSearchConditionGroups
       ) return; // nothing saveable changed
 
       prevLayers = state.layers;
@@ -197,6 +213,8 @@ export function useSession() {
       prevBookmarks = state.bookmarks;
       prevBasemap = state.basemap;
       prevSavedSearches = state.savedSearches;
+      prevSearchFilterMode = state.searchFilterMode;
+      prevSearchConditionGroups = state.searchConditionGroups;
 
       if (autoSaveTimer.current) {
         clearTimeout(autoSaveTimer.current);

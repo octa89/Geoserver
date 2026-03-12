@@ -50,6 +50,18 @@ export function buildConfigObject(): {
       zoom: b.zoom,
     })),
     savedSearches: state.savedSearches,
+    searchFilterMode: state.searchFilterMode !== 'none' ? state.searchFilterMode : undefined,
+    searchConditionGroups: state.searchConditionGroups.length > 0 ? state.searchConditionGroups.map((g) => ({
+      layerName: g.layerName,
+      combineMode: g.combineMode,
+      conditions: g.conditions.map((c) => ({
+        field: c.field,
+        operator: c.operator,
+        value: c.value,
+        ...(c.valueEnd ? { valueEnd: c.valueEnd } : {}),
+        ...(c.layerName ? { layerName: c.layerName } : {}),
+      })),
+    })) : undefined,
   };
 
   return {

@@ -116,7 +116,7 @@ export function MapLegendControl() {
 // ---------------------------------------------------------------------------
 
 function CollapsibleLayerLegend({ name, layer }: { name: string; layer: import('../../types/layer').LayerConfig }) {
-  const [layerCollapsed, setLayerCollapsed] = useState(false);
+  const [layerCollapsed, setLayerCollapsed] = useState(true);
   const sym = layer.symbology;
 
   return (

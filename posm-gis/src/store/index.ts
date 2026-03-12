@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { LayerConfig, Bookmark } from '../types/layer';
 import type { SymbologyConfig } from '../types/symbology';
-import type { SavedSearch } from '../types/session';
+import type { SavedSearch, SavedSearchGroup } from '../types/session';
 import type { BasemapKey } from '../config/constants';
 
 export interface POSMStore {
@@ -27,6 +27,10 @@ export interface POSMStore {
   workspaces: string[];
   bookmarks: Bookmark[];
   savedSearches: SavedSearch[];
+
+  // Active search filter (persisted for share view)
+  searchFilterMode: 'none' | 'hide' | 'dim';
+  searchConditionGroups: SavedSearchGroup[];
 
   // Actions
   setCenter: (center: [number, number]) => void;
@@ -66,6 +70,10 @@ export interface POSMStore {
   removeSavedSearch: (id: string) => void;
   setSavedSearches: (searches: SavedSearch[]) => void;
 
+  // Active search filter
+  setSearchFilterMode: (mode: 'none' | 'hide' | 'dim') => void;
+  setSearchConditionGroups: (groups: SavedSearchGroup[]) => void;
+
   // Bulk
   resetLayers: () => void;
 }
@@ -87,6 +95,8 @@ export const useStore = create<POSMStore>((set) => ({
   workspaces: [],
   bookmarks: [],
   savedSearches: [],
+  searchFilterMode: 'none',
+  searchConditionGroups: [],
 
   // Map actions
   setCenter: (center) => set({ center }),
@@ -178,6 +188,10 @@ export const useStore = create<POSMStore>((set) => ({
     savedSearches: state.savedSearches.filter((s) => s.id !== id),
   })),
   setSavedSearches: (savedSearches) => set({ savedSearches }),
+
+  // Active search filter
+  setSearchFilterMode: (searchFilterMode) => set({ searchFilterMode }),
+  setSearchConditionGroups: (searchConditionGroups) => set({ searchConditionGroups }),
 
   // Reset
   resetLayers: () => set({ layers: {}, layerOrder: [] }),

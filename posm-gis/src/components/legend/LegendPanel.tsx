@@ -403,7 +403,7 @@ function LayerLegendBlock({ name }: { name: string }) {
     if (pending) setPending(null);
   }
 
-  const [layerCollapsed, setLayerCollapsed] = useState(false);
+  const [layerCollapsed, setLayerCollapsed] = useState(true);
 
   if (!layer) return null;
 

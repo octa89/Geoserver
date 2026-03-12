@@ -44,6 +44,10 @@ export interface WorkspaceConfig {
   layerOrder?: string[];
   bookmarks: Array<{ id: string; name: string; center: [number, number]; zoom: number }>;
   savedSearches?: SavedSearch[];
+  /** Active advanced search filter mode applied to the map */
+  searchFilterMode?: 'none' | 'hide' | 'dim';
+  /** Active condition groups driving the search filter */
+  searchConditionGroups?: SavedSearchGroup[];
 }
 
 export interface UserStoredConfig {

@@ -64,10 +64,45 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
 
   // Advanced search state
   const [advancedMode, setAdvancedMode] = useState(false);
-  const [conditionGroups, setConditionGroups] = useState<ConditionGroup[]>([]);
-  const [filterMode, setFilterMode] = useState<'none' | 'hide' | 'dim'>('none');
   const [isSavingSearch, setIsSavingSearch] = useState(false);
   const [searchName, setSearchName] = useState('');
+
+  // filterMode and conditionGroups stored in Zustand for persistence to DynamoDB/share
+  const filterMode = useStore((s) => s.searchFilterMode);
+  const storeConditionGroups = useStore((s) => s.searchConditionGroups);
+  const setFilterMode = useStore((s) => s.setSearchFilterMode);
+  const setConditionGroupsStore = useStore((s) => s.setSearchConditionGroups);
+
+  // Rebuild ConditionGroup[] with runtime IDs from store's SavedSearchGroup[]
+  const conditionGroups: ConditionGroup[] = useMemo(() => {
+    return storeConditionGroups.map((g) => ({
+      layerName: g.layerName,
+      combineMode: g.combineMode,
+      conditions: g.conditions.map((c, i) => ({
+        id: i + 1,
+        field: c.field as string,
+        operator: c.operator as ConditionGroup['conditions'][0]['operator'],
+        value: c.value,
+        ...(c.valueEnd ? { valueEnd: c.valueEnd } : {}),
+        ...(c.layerName ? { layerName: c.layerName } : {}),
+      })),
+    }));
+  }, [storeConditionGroups]);
+
+  // Write ConditionGroup[] back to store (strips runtime IDs)
+  const setConditionGroups = useCallback((groups: ConditionGroup[]) => {
+    setConditionGroupsStore(groups.map((g) => ({
+      layerName: g.layerName,
+      combineMode: g.combineMode,
+      conditions: g.conditions.map((c) => ({
+        field: c.field,
+        operator: c.operator,
+        value: c.value,
+        ...(c.valueEnd ? { valueEnd: c.valueEnd } : {}),
+        ...(c.layerName ? { layerName: c.layerName } : {}),
+      })),
+    })));
+  }, [setConditionGroupsStore]);
 
   // ---- Refs -----------------------------------------------------------------
   const panelRef = useRef<HTMLDivElement>(null);
@@ -84,7 +119,7 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
   const removeSavedSearch = useStore((s) => s.removeSavedSearch);
 
   // ---- Hooks ----------------------------------------------------------------
-  const { search, groupedSearch, highlightFeature, zoomToFeature } =
+  const { search, groupedSearch, countGroupedMatches, highlightFeature, zoomToFeature } =
     useAttributeSearch();
 
   // ---- Debounce search query ------------------------------------------------
@@ -272,10 +307,24 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
     return Array.from(fieldSet);
   }, [results, selectedLayer]);
 
-  // Per-layer result counts (filtered / total)
+  // Per-layer true match counts (not capped by MAX_RESULTS)
   const layerCounts = useMemo(() => {
     if (results.length === 0) return [];
     const layers = useStore.getState().layers;
+
+    // In advanced mode, compute true counts without the result-cap limits
+    if (advancedMode && conditionGroups.length > 0) {
+      const trueCounts = countGroupedMatches(conditionGroups);
+      return Array.from(trueCounts.entries()).map(([name, filtered]) => ({
+        name,
+        label: layers[name]?.label ?? name,
+        color: layers[name]?.color ?? '#888',
+        filtered,
+        total: layers[name]?.featureCount ?? 0,
+      }));
+    }
+
+    // Basic search — use result array counts (already uncapped for basic)
     const countMap = new Map<string, number>();
     for (const r of results) {
       countMap.set(r.layerName, (countMap.get(r.layerName) || 0) + 1);
@@ -287,7 +336,7 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
       filtered,
       total: layers[name]?.featureCount ?? 0,
     }));
-  }, [results]);
+  }, [results, advancedMode, conditionGroups, countGroupedMatches]);
 
   // Visible slice of results
   const visibleResults = useMemo(
@@ -404,7 +453,7 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
       }));
       setConditionGroups(groups);
     },
-    [savedSearches]
+    [savedSearches, setConditionGroups]
   );
 
   const handleDeleteSearch = useCallback(
@@ -442,6 +491,7 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
 
   const panelHeight = collapsed ? MIN_HEIGHT : height;
   const resultCount = results.length;
+  const trueTotalCount = layerCounts.reduce((sum, lc) => sum + lc.filtered, 0);
 
   return (
     <div
@@ -518,7 +568,7 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
                 type="checkbox"
                 checked={filterMode === 'hide'}
                 onChange={() =>
-                  setFilterMode((prev) => (prev === 'hide' ? 'none' : 'hide'))
+                  setFilterMode(filterMode === 'hide' ? 'none' : 'hide')
                 }
               />
               <span>Hide</span>
@@ -528,7 +578,7 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
                 type="checkbox"
                 checked={filterMode === 'dim'}
                 onChange={() =>
-                  setFilterMode((prev) => (prev === 'dim' ? 'none' : 'dim'))
+                  setFilterMode(filterMode === 'dim' ? 'none' : 'dim')
                 }
               />
               <span>Dim</span>
@@ -610,7 +660,7 @@ export function SearchPanel({ mapRef }: SearchPanelProps) {
                       </span>
                     ))}
                     <span className="search-panel__result-count">
-                      {resultCount} total
+                      {trueTotalCount} total
                     </span>
                   </>
                 )}

@@ -1,16 +1,21 @@
 import L from 'leaflet';
 
 /**
- * Sewer Flow Pulse Effect
+ * Sewer Flow Pulse Effect — Comet Trail
  *
- * Renders a single glowing yellow dot traveling along each pipe segment.
- * Uses a CSS-only animation approach for maximum performance:
+ * Renders a comet (bright round dot + fading trail) traveling along each pipe.
  *
- * - ONE GeoJSON layer on a dedicated SVG renderer
- * - `stroke-dasharray` with a short dot + large gap so dots are sparse
- * - CSS `@keyframes` animates `stroke-dashoffset` — runs entirely on the
- *   compositor thread, no JS per frame
- * - No per-path setup or Web Animations API — works with any number of pipes
+ * Technique: 3 non-overlapping layers with the SAME dasharray cycle (500px)
+ * but different `animation-delay` values to position them sequentially:
+ *
+ *   ···faint tail···|===trail===|●HEAD●→
+ *
+ * - Head:  1px dash + round lineCap + thick weight = circle
+ * - Trail: 30px dash, medium weight & opacity
+ * - Tail:  30px dash, thin & faint
+ *
+ * Each layer's delay offsets it by 30px along the path so they line up
+ * perfectly without overlapping.  CSS-only animation, zero JS per frame.
  *
  * Only visible at street zoom (zoom >= 16).
  */
@@ -19,33 +24,57 @@ const FLOW_ZOOM_THRESHOLD = 16;
 const STYLE_ID = 'posm-flow-pulse-style';
 const PULSE_COLOR = '#ffdd00';
 
-// The dash pattern: a short dot (4px) with a very large gap (200px).
-// At typical street zoom, most pipe segments are < 200px on screen,
-// so only ONE dot appears per pipe. Longer pipes may show 2-3 dots
-// which still looks natural (like multiple particles in a long pipe).
-const DASH_DOT = 4;
-const DASH_GAP = 200;
-const DASH_TOTAL = DASH_DOT + DASH_GAP; // animation offset per cycle
+const DASH_TOTAL = 2000;         // cycle length shared by all layers
+const ANIM_DURATION = '8s';      // time per full cycle (keeps 250px/s speed)
+const SEGMENT_LEN = 30;          // px length of each trail segment
+const SEGMENT_DELAY = (SEGMENT_LEN / DASH_TOTAL) * 2; // seconds offset per segment
 
-/** Ensure the global @keyframes rule exists exactly once. */
+// Layer definitions — rendered bottom to top.
+// All use the same dasharray cycle; `delayMul` controls animation-delay
+// so each segment appears at the right position behind the head.
+const COMET_PARTS = [
+  // Faint tail — 30px, thin, at the back (no delay offset)
+  { da: `${SEGMENT_LEN} ${DASH_TOTAL - SEGMENT_LEN}`, weight: 1.5, opacity: 0.12,
+    cls: 'posm-flow-tail', cap: 'butt' as const, delayMul: 0 },
+  // Trail — 30px, medium, right behind head
+  { da: `${SEGMENT_LEN} ${DASH_TOTAL - SEGMENT_LEN}`, weight: 3, opacity: 0.35,
+    cls: 'posm-flow-mid', cap: 'butt' as const, delayMul: 1 },
+  // Head glow — wider, faint halo around the dot
+  { da: `1 ${DASH_TOTAL - 1}`, weight: 14, opacity: 0.12,
+    cls: 'posm-flow-glow', cap: 'round' as const, delayMul: 2 },
+  // Head — bright round dot (1px dash + round cap + thick weight = circle)
+  { da: `1 ${DASH_TOTAL - 1}`, weight: 7, opacity: 0.95,
+    cls: 'posm-flow-head', cap: 'round' as const, delayMul: 2 },
+];
+
+/** Ensure the global @keyframes + class rules exist exactly once. */
 function ensureStyleTag() {
   if (document.getElementById(STYLE_ID)) return;
   const style = document.createElement('style');
   style.id = STYLE_ID;
+
+  const classRules = COMET_PARTS.map((p) => {
+    const delay = -(p.delayMul * SEGMENT_DELAY);
+    return `.${p.cls} {
+      animation: posmFlowComet ${ANIM_DURATION} linear infinite;
+      animation-delay: ${delay.toFixed(4)}s;
+      will-change: stroke-dashoffset;
+    }`;
+  }).join('\n    ');
+
   style.textContent = `
-    @keyframes posmFlowDot {
+    @keyframes posmFlowComet {
       to { stroke-dashoffset: -${DASH_TOTAL}px; }
     }
-    .posm-flow-dot {
-      animation: posmFlowDot 0.8s linear infinite;
-      will-change: stroke-dashoffset;
-    }
+    ${classRules}
   `;
   document.head.appendChild(style);
 }
 
 function removeStyleTagIfUnused() {
-  const remaining = document.querySelectorAll('.posm-flow-dot');
+  const remaining = document.querySelectorAll(
+    COMET_PARTS.map((p) => `.${p.cls}`).join(', '),
+  );
   if (remaining.length === 0) {
     document.getElementById(STYLE_ID)?.remove();
   }
@@ -87,26 +116,30 @@ export function enableFlowPulse(
     features,
   };
 
-  // Single GeoJSON layer — one DOM operation for all pipes
+  // Create overlay layers — each part of the comet
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const overlayLayer = L.geoJSON(fc, {
-    style: () => ({
-      color: PULSE_COLOR,
-      weight: 4,
-      opacity: 0.85,
-      dashArray: `${DASH_DOT} ${DASH_GAP}`,
-      lineCap: 'round' as const,
+  const overlays: L.GeoJSON[] = [];
+  for (const part of COMET_PARTS) {
+    const layer = L.geoJSON(fc, {
+      style: () => ({
+        color: PULSE_COLOR,
+        weight: part.weight,
+        opacity: part.opacity,
+        dashArray: part.da,
+        lineCap: part.cap,
+        interactive: false,
+        className: part.cls,
+      }),
+      renderer: svgRenderer,
       interactive: false,
-      className: 'posm-flow-dot',
-    }),
-    renderer: svgRenderer,
-    interactive: false,
-  } as any);
+    } as any);
 
-  overlayLayer.addTo(map);
+    layer.addTo(map);
+    overlays.push(layer);
+  }
 
   // Hide SVG during map transitions to prevent freeze from SVG re-renders
-  // during flyTo/pan/zoom. Flow dots reappear once movement stops.
+  // during flyTo/pan/zoom. Comet reappears once movement stops.
   let moveEndTimer: ReturnType<typeof setTimeout> | null = null;
 
   const getContainer = () =>
@@ -141,7 +174,7 @@ export function enableFlowPulse(
   map.on('movestart', onMoveStart);
   map.on('moveend', onMoveEnd);
 
-  // Cleanup — one layer removal + one container removal
+  // Cleanup — remove all overlay layers + the shared SVG container
   return () => {
     map.off('movestart', onMoveStart);
     map.off('moveend', onMoveEnd);
@@ -149,7 +182,9 @@ export function enableFlowPulse(
       clearTimeout(moveEndTimer);
       moveEndTimer = null;
     }
-    if (map.hasLayer(overlayLayer)) map.removeLayer(overlayLayer);
+    for (const layer of overlays) {
+      if (map.hasLayer(layer)) map.removeLayer(layer);
+    }
     const container = (svgRenderer as unknown as { _container?: HTMLElement })
       ._container;
     if (container && container.parentNode) {

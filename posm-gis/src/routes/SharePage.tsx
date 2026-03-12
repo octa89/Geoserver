@@ -12,6 +12,7 @@ import { darkenColor } from '../lib/colorUtils';
 import { buildCqlFilter } from '../lib/cqlUtils';
 import { smartSortFields, formatPopupValue, escapeHtml } from '../lib/popupUtils';
 import { applyLabels, computeLabelMinZoom, initLabelMoveListener, removeLabels } from '../lib/labels';
+import { matchConditionGroups } from '../lib/searchMatch';
 import type { LabelManager } from '../lib/labels';
 import { BASEMAPS, LAYER_COLORS } from '../config/constants';
 import { loadShareSnapshot } from '../lib/api';
@@ -258,6 +259,8 @@ export function SharePage() {
     setStatus(`Loading ${layerNames.length} layer(s)\u2026`);
 
     const collectedLegend: ShareLayerInfo[] = [];
+    // Collect GeoJSON per layer for search filter matching
+    const layerGeoJsonMap = new Map<string, { geojson: GeoJSON.FeatureCollection; fields: string[] }>();
 
     Promise.allSettled(
       layerNames.map(async (fullName, idx) => {
@@ -336,6 +339,12 @@ export function SharePage() {
         // Store refs for toggle
         layerRefsMap.current[fullName] = { leafletLayer, clusterGroup, labelMgr, labelMinZoom };
 
+        // Collect GeoJSON data for search filter matching
+        const featureFields = geojson.features.length > 0 && geojson.features[0].properties
+          ? Object.keys(geojson.features[0].properties)
+          : [];
+        layerGeoJsonMap.set(fullName, { geojson, fields: featureFields });
+
         collectedLegend.push({
           name: fullName,
           label: shortName,
@@ -348,6 +357,51 @@ export function SharePage() {
     ).then(() => {
       setLegendLayers([...collectedLegend]);
       setStatus('');
+
+      // Apply saved search filter (hide/dim) if present
+      const filterMode = wsConfig.searchFilterMode;
+      const conditionGroups = wsConfig.searchConditionGroups;
+      if (
+        filterMode && filterMode !== 'none' &&
+        conditionGroups && conditionGroups.length > 0 &&
+        layerGeoJsonMap.size > 0
+      ) {
+        const matchesByLayer = matchConditionGroups(conditionGroups, layerGeoJsonMap);
+
+        for (const [layerName, refs] of Object.entries(layerRefsMap.current)) {
+          if (!refs?.leafletLayer) continue;
+          const data = layerGeoJsonMap.get(layerName);
+          if (!data) continue;
+
+          const matchedIndices = matchesByLayer.get(layerName);
+
+          // Build feature → index map using object identity
+          const featureToIndex = new Map<GeoJSON.Feature, number>();
+          data.geojson.features.forEach((f, i) => { featureToIndex.set(f, i); });
+
+          refs.leafletLayer.eachLayer((featureLayer: L.Layer) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const fl = featureLayer as any;
+            const feat = fl.feature as GeoJSON.Feature | undefined;
+            const idx = feat ? featureToIndex.get(feat) : undefined;
+            const isMatch = idx !== undefined && matchedIndices?.has(idx);
+
+            if (filterMode === 'hide') {
+              if (!isMatch) {
+                if (fl.setStyle) fl.setStyle({ opacity: 0, fillOpacity: 0 });
+                if (fl.setOpacity) fl.setOpacity(0);
+                const el = fl.getElement?.();
+                if (el) el.style.display = 'none';
+              }
+            } else if (filterMode === 'dim') {
+              if (!isMatch) {
+                if (fl.setStyle) fl.setStyle({ opacity: 0.06, fillOpacity: 0.02 });
+                if (fl.setOpacity) fl.setOpacity(0.06);
+              }
+            }
+          });
+        }
+      }
 
       // Set up label move/zoom listener (same as main app)
       const cleanupLabels = initLabelMoveListener(map, () => {

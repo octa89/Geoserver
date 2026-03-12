@@ -36,6 +36,7 @@ export interface UseAttributeSearchReturn {
     layerName?: string
   ) => SearchResult[];
   groupedSearch: (groups: ConditionGroup[]) => SearchResult[];
+  countGroupedMatches: (groups: ConditionGroup[]) => Map<string, number>;
   getLayerFields: (layerName: string) => string[];
   getAllFields: () => string[];
   highlightFeature: (
@@ -386,6 +387,86 @@ export function useAttributeSearch(): UseAttributeSearchReturn {
     [structuredSearch]
   );
 
+  /**
+   * Count ALL matching features per layer without result-cap limits.
+   * Lightweight — only counts, doesn't allocate SearchResult objects.
+   */
+  const countGroupedMatches = useCallback(
+    (groups: ConditionGroup[]): Map<string, number> => {
+      const counts = new Map<string, number>();
+      // Track seen features per layer to avoid double-counting across groups
+      const seenPerLayer = new Map<string, Set<number>>();
+
+      for (const group of groups) {
+        if (group.conditions.length === 0) continue;
+
+        const layerName = group.layerName;
+        const layers = useStore.getState().layers;
+        const allRefs = getAllLayerRefs();
+
+        // Determine layers to search (same logic as structuredSearch)
+        const condLayerNames = new Set(
+          group.conditions.map((c) => c.layerName).filter(Boolean) as string[]
+        );
+        const layersToSearch = layerName
+          ? [[layerName, allRefs.get(layerName)] as const].filter(([, r]) => r != null)
+          : condLayerNames.size > 0
+            ? Array.from(condLayerNames).map((n) => [n, allRefs.get(n)] as const).filter(([, r]) => r != null)
+            : Array.from(allRefs.entries());
+
+        for (const [name, refs] of layersToSearch) {
+          if (!refs) continue;
+          const config = layers[name];
+          if (!config) continue;
+          const searchFields = config.fields;
+          if (searchFields.length === 0) continue;
+
+          const relevantConds = group.conditions.filter(
+            (c) => !c.layerName || c.layerName === name
+          );
+          if (relevantConds.length === 0) continue;
+
+          if (!seenPerLayer.has(name)) seenPerLayer.set(name, new Set());
+          const seen = seenPerLayer.get(name)!;
+
+          const features = refs.geojson.features;
+          for (let i = 0; i < features.length; i++) {
+            if (seen.has(i)) continue;
+            const props = features[i].properties;
+            if (!props) continue;
+
+            let passes: boolean;
+            if (group.combineMode === 'AND') {
+              passes = true;
+              for (const cond of relevantConds) {
+                if (!matchCondition(props as Record<string, unknown>, cond, searchFields).matched) {
+                  passes = false;
+                  break;
+                }
+              }
+            } else {
+              passes = false;
+              for (const cond of relevantConds) {
+                if (matchCondition(props as Record<string, unknown>, cond, searchFields).matched) {
+                  passes = true;
+                  break;
+                }
+              }
+            }
+
+            if (passes) {
+              seen.add(i);
+              counts.set(name, (counts.get(name) || 0) + 1);
+            }
+          }
+        }
+      }
+
+      return counts;
+    },
+    []
+  );
+
   const getLayerFields = useCallback((layerName: string): string[] => {
     const config = useStore.getState().layers[layerName];
     return config?.fields ?? [];
@@ -511,6 +592,7 @@ export function useAttributeSearch(): UseAttributeSearchReturn {
     search,
     structuredSearch,
     groupedSearch,
+    countGroupedMatches,
     getLayerFields,
     getAllFields,
     highlightFeature,
