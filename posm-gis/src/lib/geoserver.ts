@@ -71,26 +71,8 @@ function extractXmlError(xmlText: string): string | null {
  * Tries the REST API first, falls back to WFS GetCapabilities parsing.
  */
 export async function discoverAllWorkspaces(): Promise<string[]> {
-  // Try REST API first (requires GeoServer admin credentials)
-  try {
-    const resp = await fetch(`${GEOSERVER_BASE}/rest/workspaces.json`, {
-      headers: {
-        'Authorization': 'Basic ' + btoa(`${GS_ADMIN_USER}:${GS_ADMIN_PASS}`),
-        'Accept': 'application/json',
-      },
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      const workspaces = data?.workspaces?.workspace;
-      if (Array.isArray(workspaces)) {
-        return workspaces.map((w: { name: string }) => w.name).sort();
-      }
-    }
-  } catch {
-    // REST API not available, try WFS fallback
-  }
-
-  // Fallback: parse WFS GetCapabilities to extract workspace prefixes
+  // Try WFS GetCapabilities first — no auth needed, avoids browser
+  // popping a native basic-auth dialog on 401 from the REST endpoint.
   try {
     const resp = await fetch(
       `${GEOSERVER_BASE}/wfs?service=WFS&version=1.1.0&request=GetCapabilities`
@@ -105,7 +87,27 @@ export async function discoverAllWorkspaces(): Promise<string[]> {
           wsSet.add(t.name.substring(0, colonIdx));
         }
       }
-      return Array.from(wsSet).sort();
+      if (wsSet.size > 0) return Array.from(wsSet).sort();
+    }
+  } catch {
+    // WFS not available, try REST fallback
+  }
+
+  // Fallback: REST API (requires GeoServer admin credentials)
+  try {
+    const resp = await fetch(`${GEOSERVER_BASE}/rest/workspaces.json`, {
+      headers: {
+        'Authorization': 'Basic ' + btoa(`${GS_ADMIN_USER}:${GS_ADMIN_PASS}`),
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const workspaces = data?.workspaces?.workspace;
+      if (Array.isArray(workspaces)) {
+        return workspaces.map((w: { name: string }) => w.name).sort();
+      }
     }
   } catch {
     // Both methods failed
