@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import type { RefObject } from 'react';
 import type L from 'leaflet';
 import { useStore } from '../../store';
-import { resetSymbology, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { resetSymbology, refreshClusterAfterSymbology, applySymbologyOpacity, hasNonTrivialOpacity } from '../../lib/symbology';
 import { getLayerRefs, setLayerRefs } from '../../store/leafletRegistry';
 import { toggleArrows } from '../../lib/arrows';
 import { toggleFlowPulse } from '../../lib/sewerFlow';
@@ -46,6 +46,7 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
   const setLayerColor = useStore((s) => s.setLayerColor);
   const setLayerArrows = useStore((s) => s.setLayerArrows);
   const setLayerFlowPulse = useStore((s) => s.setLayerFlowPulse);
+  const setLayerOpacity = useStore((s) => s.setLayerOpacity);
 
   const [selectedLayer, setSelectedLayer] = useState<string>(() => layerOrder[0] ?? '');
   const [mode, setMode] = useState<SymbologyMode>(null);
@@ -86,6 +87,11 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
           refs.geojson
         );
         refreshClusterAfterSymbology(refs);
+
+        // Re-apply opacity after style rebuild
+        if (hasNonTrivialOpacity(null, layerConfig.opacity)) {
+          applySymbologyOpacity(refs.leafletLayer, layerConfig.geomType, null, layerConfig.opacity);
+        }
 
         // Refresh arrow decorators if active
         if (layerConfig.showArrows) {
@@ -177,6 +183,11 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
         refs.geojson
       );
       refreshClusterAfterSymbology(refs);
+
+      // Re-apply opacity after style rebuild
+      if (hasNonTrivialOpacity(null, layer.opacity)) {
+        applySymbologyOpacity(refs.leafletLayer, layer.geomType, null, layer.opacity);
+      }
     }
 
     setLayerSymbology(selectedLayer, null);
@@ -339,6 +350,30 @@ export function SymbologyPanel({ mapRef }: SymbologyPanelProps) {
             />
             <span style={{ fontSize: 13, color: '#ccc', fontFamily: 'monospace' }}>
               {layerConfig.color.toUpperCase()}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 11, color: '#aaa', flexShrink: 0 }}>Opacity</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={Math.round((layerConfig.opacity ?? 1) * 100)}
+              onChange={(e) => {
+                if (!selectedLayer) return;
+                const opacity = Number(e.target.value) / 100;
+                setLayerOpacity(selectedLayer, opacity);
+                bump();
+                const refs = getLayerRefs(selectedLayer);
+                if (refs) {
+                  applySymbologyOpacity(refs.leafletLayer, layerConfig.geomType, null, opacity);
+                }
+              }}
+              style={{ flex: 1, height: 4, accentColor: '#42d4f4', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: 11, color: '#ccc', minWidth: 30, textAlign: 'right' }}>
+              {Math.round((layerConfig.opacity ?? 1) * 100)}%
             </span>
           </div>
         </div>

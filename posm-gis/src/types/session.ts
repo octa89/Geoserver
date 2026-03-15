@@ -14,6 +14,7 @@ export interface PerLayerConfig {
   filterCombineMode: 'AND' | 'OR';
   popupConfig: PopupConfig | null;
   ageConfig: AgeConfig | null;
+  opacity?: number;
 }
 
 export interface SavedSearchCondition {

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../../store';
-import { applyGraduated, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { applyGraduated, refreshClusterAfterSymbology, applySymbologyOpacity, hasNonTrivialOpacity } from '../../lib/symbology';
 import { getLayerRefs } from '../../store/leafletRegistry';
 import { RampPicker } from './RampPicker';
 
@@ -60,6 +60,9 @@ export function GraduatedPanel({ layerName }: GraduatedPanelProps) {
     );
 
     refreshClusterAfterSymbology(refs);
+    if (hasNonTrivialOpacity(result, layer.opacity)) {
+      applySymbologyOpacity(refs.leafletLayer, layer.geomType, result, layer.opacity);
+    }
     setLayerSymbology(layerName, result);
   };
 

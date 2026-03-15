@@ -179,6 +179,7 @@ export function useLayers(mapRef: React.RefObject<L.Map | null>) {
             filterCombineMode: 'AND',
             popupConfig: null,
             ageConfig: null,
+            opacity: 1,
           };
           setLayer(layerMeta.fullName, config);
 

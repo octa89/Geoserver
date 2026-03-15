@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store';
-import { applyUniqueValues, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { applyUniqueValues, refreshClusterAfterSymbology, applySymbologyOpacity, hasNonTrivialOpacity } from '../../lib/symbology';
 import { getLayerRefs } from '../../store/leafletRegistry';
 
 interface UniqueValuesPanelProps {
@@ -43,6 +43,9 @@ export function UniqueValuesPanel({ layerName }: UniqueValuesPanelProps) {
     );
 
     refreshClusterAfterSymbology(refs);
+    if (hasNonTrivialOpacity(result, layer.opacity)) {
+      applySymbologyOpacity(refs.leafletLayer, layer.geomType, result, layer.opacity);
+    }
     setLayerSymbology(layerName, result);
   };
 

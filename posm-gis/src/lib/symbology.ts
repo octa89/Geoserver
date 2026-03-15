@@ -26,6 +26,139 @@ import type { LeafletLayerRefs } from '../store/leafletRegistry';
 type GeomType = string;
 
 // ---------------------------------------------------------------------------
+// Per-feature opacity (Canvas-renderer compatible)
+// ---------------------------------------------------------------------------
+
+/**
+ * Clear cached base fill/stroke opacity on each sublayer.
+ * Must be called before any style operation that changes fillOpacity/opacity
+ * (recolor, reset, apply) so the next applySymbologyOpacity captures fresh values.
+ */
+export function clearBaseOpacity(leafletLayer: L.GeoJSON): void {
+  leafletLayer.eachLayer((sublayer) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = sublayer as any;
+    delete s.__baseFillOp;
+    delete s.__baseStrokeOp;
+  });
+}
+
+/**
+ * Build a per-feature opacity resolver from a symbology config.
+ * Returns a function that maps a feature → opacity (0–1).
+ */
+function buildOpacityResolver(
+  config: SymbologyConfig | null,
+  layerOpacity: number,
+): (feature: GeoJSON.Feature | undefined) => number {
+  if (!config) return () => layerOpacity;
+
+  switch (config.mode) {
+    case 'unique': {
+      const map = config.valueOpacityMap;
+      if (!map || Object.keys(map).length === 0) return () => 1;
+      const { field, groupByYear } = config;
+      return (feature) => {
+        if (!feature) return 1;
+        let raw = feature.properties?.[field];
+        if (raw === null || raw === undefined) raw = '';
+        const key = groupByYear ? (extractYear(raw) ?? String(raw)) : String(raw);
+        return map[key] ?? 1;
+      };
+    }
+    case 'graduated': {
+      const opacities = config.opacities;
+      if (!opacities?.length) return () => 1;
+      const { field, breaks } = config;
+      return (feature) => {
+        if (!feature) return 1;
+        const val = Number(feature.properties?.[field]);
+        if (isNaN(val)) return 1;
+        for (let i = 0; i < opacities.length; i++) {
+          if (val <= (breaks[i + 1] ?? Infinity)) return opacities[i];
+        }
+        return opacities[opacities.length - 1] ?? 1;
+      };
+    }
+    case 'rules': {
+      const { rules, defaultOpacity } = config;
+      return (feature) => {
+        if (!feature) return defaultOpacity ?? 1;
+        const props = feature.properties ?? {};
+        for (const rule of rules) {
+          if (testRule(props, rule)) return rule.opacity ?? 1;
+        }
+        return defaultOpacity ?? 1;
+      };
+    }
+    case 'proportional':
+      return () => config.opacity ?? 1;
+  }
+}
+
+/**
+ * Apply per-feature opacity by modifying Leaflet style options (fillOpacity, opacity).
+ * Works with Canvas renderer (unlike CSS element.style.opacity which only works for SVG).
+ *
+ * Uses cached base values (__baseFillOp, __baseStrokeOp) so it can be called
+ * repeatedly (e.g. slider drag) without double-multiplying. Call clearBaseOpacity()
+ * before restyling to reset the cache.
+ */
+export function applySymbologyOpacity(
+  leafletLayer: L.GeoJSON,
+  _geomType: string,
+  config: SymbologyConfig | null,
+  layerOpacity: number,
+): void {
+  const getOpacity = buildOpacityResolver(config, layerOpacity);
+
+  leafletLayer.eachLayer((sublayer) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const s = sublayer as any;
+    const feature = s.feature as GeoJSON.Feature | undefined;
+    const opacity = getOpacity(feature);
+
+    if (typeof s.setStyle === 'function' && s.options) {
+      // Capture base values on first call (set by the most recent style operation)
+      if (s.__baseFillOp === undefined) {
+        s.__baseFillOp = s.options.fillOpacity ?? null;
+        s.__baseStrokeOp = s.options.opacity ?? null;
+      }
+
+      const style: L.PathOptions = {};
+      if (s.__baseFillOp !== null) style.fillOpacity = s.__baseFillOp * opacity;
+      if (s.__baseStrokeOp !== null) style.opacity = s.__baseStrokeOp * opacity;
+      s.setStyle(style);
+    }
+
+    // DivIcon markers (always DOM-based)
+    const icon = s._icon as HTMLElement | undefined;
+    if (icon) icon.style.opacity = String(opacity);
+  });
+}
+
+/**
+ * Check whether a symbology config has any per-value opacity < 1.
+ */
+export function hasNonTrivialOpacity(
+  config: SymbologyConfig | null,
+  layerOpacity: number,
+): boolean {
+  if (layerOpacity < 1) return true;
+  if (!config) return false;
+  switch (config.mode) {
+    case 'unique':
+      return Object.values(config.valueOpacityMap ?? {}).some((v) => v < 1);
+    case 'graduated':
+      return (config.opacities ?? []).some((v) => v < 1);
+    case 'rules':
+      return config.rules.some((r) => (r.opacity ?? 1) < 1) || (config.defaultOpacity ?? 1) < 1;
+    case 'proportional':
+      return (config.opacity ?? 1) < 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // defaultStyle
 // ---------------------------------------------------------------------------
 
@@ -250,6 +383,7 @@ export function recolorSymbology(
   pointSymbol: string,
   config: SymbologyConfig
 ): void {
+  clearBaseOpacity(leafletLayer);
   const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
 
   if (config.mode === 'unique') {
@@ -762,6 +896,7 @@ export function resetSymbology(
   pointSymbol: string,
   geojson?: GeoJSON.FeatureCollection
 ): void {
+  clearBaseOpacity(leafletLayer);
   const isPoint = geomType === 'Point' || geomType === 'MultiPoint';
   if (isPoint && geojson) {
     rebuildPointLayerWithColors(leafletLayer, geojson, pointSymbol, () => color);

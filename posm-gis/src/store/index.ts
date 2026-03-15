@@ -57,6 +57,7 @@ export interface POSMStore {
   setLayerPopupConfig: (name: string, config: import('../types/layer').PopupConfig | null) => void;
   setLayerPointSymbol: (name: string, pointSymbol: string) => void;
   setLayerAgeConfig: (name: string, ageConfig: import('../types/layer').AgeConfig | null) => void;
+  setLayerOpacity: (name: string, opacity: number) => void;
   setLayerFeatureCount: (name: string, count: number) => void;
   setLayerOrder: (order: string[]) => void;
 
@@ -163,6 +164,9 @@ export const useStore = create<POSMStore>((set) => ({
   })),
   setLayerAgeConfig: (name, ageConfig) => set((state) => ({
     layers: { ...state.layers, [name]: { ...state.layers[name], ageConfig } },
+  })),
+  setLayerOpacity: (name, opacity) => set((state) => ({
+    layers: { ...state.layers, [name]: { ...state.layers[name], opacity } },
   })),
   setLayerFeatureCount: (name, count) => set((state) => {
     const existing = state.layers[name];

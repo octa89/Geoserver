@@ -4,6 +4,7 @@ export interface UniqueSymbology {
   mode: 'unique';
   field: string;
   valueColorMap: Record<string, string>;
+  valueOpacityMap?: Record<string, number>;
   groupByYear?: boolean;
 }
 
@@ -15,6 +16,7 @@ export interface GraduatedSymbology {
   ramp: string;
   breaks: number[];
   colors: string[];
+  opacities?: number[];
 }
 
 export interface ProportionalSymbology {
@@ -23,6 +25,7 @@ export interface ProportionalSymbology {
   minSize: number;
   maxSize: number;
   color?: string;
+  opacity?: number;
   minVal?: number;
   maxVal?: number;
 }
@@ -31,6 +34,7 @@ export interface RuleSymbology {
   mode: 'rules';
   rules: RuleDef[];
   defaultColor: string;
+  defaultOpacity?: number;
 }
 
 export interface RuleDef {
@@ -38,6 +42,7 @@ export interface RuleDef {
   operator: string;
   value: string;
   color: string;
+  opacity?: number;
 }
 
 export type SymbologyConfig =

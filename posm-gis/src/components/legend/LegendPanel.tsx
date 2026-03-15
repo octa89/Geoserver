@@ -1,6 +1,6 @@
-import { useRef, useState, useCallback } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { useStore } from '../../store';
-import { recolorSymbology, resetSymbology, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { recolorSymbology, resetSymbology, refreshClusterAfterSymbology, applySymbologyOpacity, hasNonTrivialOpacity } from '../../lib/symbology';
 import { getLayerRefs } from '../../store/leafletRegistry';
 import type {
   SymbologyConfig,
@@ -15,7 +15,7 @@ import { COLOR_RAMPS } from '../../config/constants';
 // Helpers
 // ---------------------------------------------------------------------------
 
-function Swatch({ color, size = 12 }: { color: string; size?: number }) {
+function Swatch({ color, size = 12, opacity = 1 }: { color: string; size?: number; opacity?: number }) {
   return (
     <span
       className="legend-swatch"
@@ -25,6 +25,7 @@ function Swatch({ color, size = 12 }: { color: string; size?: number }) {
         height: size,
         borderRadius: 2,
         background: color,
+        opacity,
         border: '1px solid rgba(255,255,255,0.15)',
         flexShrink: 0,
       }}
@@ -33,14 +34,25 @@ function Swatch({ color, size = 12 }: { color: string; size?: number }) {
 }
 
 /**
- * Clickable swatch that opens a hidden color input when clicked.
+ * Clickable swatch that opens a popover with color picker + opacity slider.
  * Used for layers without symbology (single symbol mode).
  */
 function ClickableSwatch({ color, layerName, size = 12 }: { color: string; layerName: string; size?: number }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLSpanElement>(null);
   const setLayerColor = useStore((s) => s.setLayerColor);
+  const setLayerOpacity = useStore((s) => s.setLayerOpacity);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newColor = e.target.value;
     setLayerColor(layerName, newColor);
 
@@ -49,29 +61,43 @@ function ClickableSwatch({ color, layerName, size = 12 }: { color: string; layer
 
     const refs = getLayerRefs(layerName);
     if (refs) {
-      resetSymbology(
-        refs.leafletLayer,
-        layer.geomType,
-        newColor,
-        layer.pointSymbol,
-        refs.geojson
-      );
+      resetSymbology(refs.leafletLayer, layer.geomType, newColor, layer.pointSymbol, refs.geojson);
       refreshClusterAfterSymbology(refs);
+      if (hasNonTrivialOpacity(null, layer.opacity)) {
+        applySymbologyOpacity(refs.leafletLayer, layer.geomType, null, layer.opacity);
+      }
     }
   };
 
+  const handleOpacityChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const opacity = Number(e.target.value) / 100;
+    setLayerOpacity(layerName, opacity);
+
+    const layer = useStore.getState().layers[layerName];
+    if (!layer) return;
+
+    const refs = getLayerRefs(layerName);
+    if (refs) {
+      applySymbologyOpacity(refs.leafletLayer, layer.geomType, null, opacity);
+    }
+  };
+
+  const layer = useStore.getState().layers[layerName];
+  const currentOpacity = layer?.opacity ?? 1;
+
   return (
-    <span style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+    <span ref={containerRef} style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
       <span
         className="legend-swatch"
-        onClick={() => inputRef.current?.click()}
-        title="Click to change color"
+        onClick={() => setOpen(!open)}
+        title="Click to edit color & opacity"
         style={{
           display: 'inline-block',
           width: size,
           height: size,
           borderRadius: 2,
           background: color,
+          opacity: currentOpacity,
           border: '1px solid rgba(255,255,255,0.15)',
           cursor: 'pointer',
           transition: 'box-shadow 0.15s',
@@ -79,24 +105,28 @@ function ClickableSwatch({ color, layerName, size = 12 }: { color: string; layer
         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 0 0 2px #42d4f4'; }}
         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
       />
-      <input
-        ref={inputRef}
-        type="color"
-        value={color}
-        onChange={handleChange}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: 0,
-          height: 0,
-          opacity: 0,
-          overflow: 'hidden',
-          border: 'none',
-          padding: 0,
-        }}
-        tabIndex={-1}
-      />
+      {open && (
+        <div style={{
+          position: 'absolute', top: size + 4, left: 0, zIndex: 200,
+          background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 6,
+          padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
+          minWidth: 150, boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, color: '#888', minWidth: 38 }}>Color</span>
+            <input type="color" value={color} onChange={handleColorChange}
+              style={{ width: 28, height: 20, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} />
+            <span style={{ fontSize: 9, color: '#666', fontFamily: 'monospace' }}>{color}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, color: '#888', minWidth: 38 }}>Opacity</span>
+            <input type="range" min={0} max={100} step={5}
+              value={Math.round(currentOpacity * 100)} onChange={handleOpacityChange}
+              style={{ width: 60, height: 3, accentColor: '#42d4f4', cursor: 'pointer' }} />
+            <span style={{ fontSize: 9, color: '#aaa' }}>{Math.round(currentOpacity * 100)}%</span>
+          </div>
+        </div>
+      )}
     </span>
   );
 }
@@ -117,32 +147,47 @@ function ClickableLegendEntry({ color, label, layerName, size }: { color: string
 }
 
 // ---------------------------------------------------------------------------
-// Clickable symbology swatch — updates a specific color in the symbology config
+// Clickable symbology swatch — popover with color picker + opacity slider
 // ---------------------------------------------------------------------------
 
 function ClickableSymSwatch({
   color,
+  opacity = 1,
   onColorChange,
+  onOpacityChange,
   size = 12,
 }: {
   color: string;
+  opacity?: number;
   onColorChange: (newColor: string) => void;
+  onOpacityChange?: (newOpacity: number) => void;
   size?: number;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
 
   return (
-    <span style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
+    <span ref={containerRef} style={{ position: 'relative', display: 'inline-block', flexShrink: 0 }}>
       <span
         className="legend-swatch"
-        onClick={() => inputRef.current?.click()}
-        title="Click to change color"
+        onClick={() => setOpen(!open)}
+        title="Click to edit color & opacity"
         style={{
           display: 'inline-block',
           width: size,
           height: size,
           borderRadius: 2,
           background: color,
+          opacity,
           border: '1px solid rgba(255,255,255,0.15)',
           cursor: 'pointer',
           transition: 'box-shadow 0.15s',
@@ -150,22 +195,31 @@ function ClickableSymSwatch({
         onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 0 0 2px #42d4f4'; }}
         onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; }}
       />
-      <input
-        ref={inputRef}
-        type="color"
-        value={color}
-        onChange={(e) => onColorChange(e.target.value)}
-        style={{
-          position: 'absolute',
-          top: 0, left: 0,
-          width: 0, height: 0,
-          opacity: 0,
-          overflow: 'hidden',
-          border: 'none',
-          padding: 0,
-        }}
-        tabIndex={-1}
-      />
+      {open && (
+        <div style={{
+          position: 'absolute', top: size + 4, left: 0, zIndex: 200,
+          background: '#1a1a2e', border: '1px solid #3a3a5a', borderRadius: 6,
+          padding: 8, display: 'flex', flexDirection: 'column', gap: 6,
+          minWidth: 150, boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 9, color: '#888', minWidth: 38 }}>Color</span>
+            <input type="color" value={color} onChange={(e) => onColorChange(e.target.value)}
+              style={{ width: 28, height: 20, border: 'none', background: 'none', cursor: 'pointer', padding: 0 }} />
+            <span style={{ fontSize: 9, color: '#666', fontFamily: 'monospace' }}>{color}</span>
+          </div>
+          {onOpacityChange && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 9, color: '#888', minWidth: 38 }}>Opacity</span>
+              <input type="range" min={0} max={100} step={5}
+                value={Math.round(opacity * 100)}
+                onChange={(e) => onOpacityChange(Number(e.target.value) / 100)}
+                style={{ width: 60, height: 3, accentColor: '#42d4f4', cursor: 'pointer' }} />
+              <span style={{ fontSize: 9, color: '#aaa' }}>{Math.round(opacity * 100)}%</span>
+            </div>
+          )}
+        </div>
+      )}
     </span>
   );
 }
@@ -181,6 +235,10 @@ function commitSymbology(layerName: string, newSym: SymbologyConfig) {
 
   recolorSymbology(refs.leafletLayer, refs.geojson, layer.geomType, layer.pointSymbol, newSym);
   refreshClusterAfterSymbology(refs);
+
+  if (hasNonTrivialOpacity(newSym, layer.opacity)) {
+    applySymbologyOpacity(refs.leafletLayer, layer.geomType, newSym, layer.opacity);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -199,8 +257,12 @@ function UniqueValuesLegend({ sym, onUpdate }: { sym: UniqueSymbology; onUpdate:
         >
           <ClickableSymSwatch
             color={color}
+            opacity={sym.valueOpacityMap?.[val] ?? 1}
             onColorChange={(newColor) => {
               onUpdate({ ...sym, valueColorMap: { ...sym.valueColorMap, [val]: newColor } });
+            }}
+            onOpacityChange={(newOpacity) => {
+              onUpdate({ ...sym, valueOpacityMap: { ...(sym.valueOpacityMap ?? {}), [val]: newOpacity } });
             }}
           />
           <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -230,10 +292,16 @@ function GraduatedLegend({ sym, onUpdate }: { sym: GraduatedSymbology; onUpdate:
           >
             <ClickableSymSwatch
               color={color}
+              opacity={sym.opacities?.[i] ?? 1}
               onColorChange={(newColor) => {
                 const newColors = [...sym.colors];
                 newColors[i] = newColor;
                 onUpdate({ ...sym, colors: newColors });
+              }}
+              onOpacityChange={(newOpacity) => {
+                const newOpacities = [...(sym.opacities ?? sym.colors.map(() => 1))];
+                newOpacities[i] = newOpacity;
+                onUpdate({ ...sym, opacities: newOpacities });
               }}
             />
             <span className="legend-label" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -246,22 +314,22 @@ function GraduatedLegend({ sym, onUpdate }: { sym: GraduatedSymbology; onUpdate:
   );
 }
 
-function ProportionalLegend({ sym }: { sym: ProportionalSymbology }) {
+function ProportionalLegend({ sym, onUpdate }: { sym: ProportionalSymbology; onUpdate: (s: SymbologyConfig) => void }) {
   const swatchColor = sym.color ?? '#3388ff';
-  const minVal = sym.minVal !== undefined ? sym.minVal : '—';
-  const maxVal = sym.maxVal !== undefined ? sym.maxVal : '—';
+  const minVal = sym.minVal !== undefined ? sym.minVal : '\u2014';
+  const maxVal = sym.maxVal !== undefined ? sym.maxVal : '\u2014';
   return (
     <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
-        <span
-          style={{
-            display: 'inline-block',
-            width: sym.minSize,
-            height: sym.minSize,
-            borderRadius: '50%',
-            background: swatchColor,
-            border: '1px solid rgba(255,255,255,0.15)',
-            flexShrink: 0,
+        <ClickableSymSwatch
+          color={swatchColor}
+          opacity={sym.opacity ?? 1}
+          size={Math.max(sym.minSize, 8)}
+          onColorChange={(newColor) => {
+            onUpdate({ ...sym, color: newColor });
+          }}
+          onOpacityChange={(newOpacity) => {
+            onUpdate({ ...sym, opacity: newOpacity });
           }}
         />
         <span style={{ fontSize: 10, color: '#ccc' }}>{String(minVal)} (min)</span>
@@ -274,6 +342,7 @@ function ProportionalLegend({ sym }: { sym: ProportionalSymbology }) {
             height: Math.min(sym.maxSize, 24),
             borderRadius: '50%',
             background: swatchColor,
+            opacity: sym.opacity ?? 1,
             border: '1px solid rgba(255,255,255,0.15)',
             flexShrink: 0,
           }}
@@ -301,8 +370,13 @@ function RulesLegend({ sym, onUpdate }: { sym: RuleSymbology; onUpdate: (s: Symb
           >
             <ClickableSymSwatch
               color={rule.color}
+              opacity={rule.opacity ?? 1}
               onColorChange={(newColor) => {
                 const newRules = sym.rules.map((r, j) => j === i ? { ...r, color: newColor } : r);
+                onUpdate({ ...sym, rules: newRules });
+              }}
+              onOpacityChange={(newOpacity) => {
+                const newRules = sym.rules.map((r, j) => j === i ? { ...r, opacity: newOpacity } : r);
                 onUpdate({ ...sym, rules: newRules });
               }}
             />
@@ -318,8 +392,12 @@ function RulesLegend({ sym, onUpdate }: { sym: RuleSymbology; onUpdate: (s: Symb
       >
         <ClickableSymSwatch
           color={sym.defaultColor}
+          opacity={sym.defaultOpacity ?? 1}
           onColorChange={(newColor) => {
             onUpdate({ ...sym, defaultColor: newColor });
+          }}
+          onOpacityChange={(newOpacity) => {
+            onUpdate({ ...sym, defaultOpacity: newOpacity });
           }}
         />
         <span className="legend-label">(default)</span>
@@ -335,7 +413,7 @@ function SymbologyLegend({ sym, onUpdate }: { sym: SymbologyConfig; onUpdate: (s
     case 'graduated':
       return <GraduatedLegend sym={sym} onUpdate={onUpdate} />;
     case 'proportional':
-      return <ProportionalLegend sym={sym} />;
+      return <ProportionalLegend sym={sym} onUpdate={onUpdate} />;
     case 'rules':
       return <RulesLegend sym={sym} onUpdate={onUpdate} />;
     default:
@@ -370,20 +448,13 @@ function RampStrip({ ramp }: { ramp: string }) {
 // ---------------------------------------------------------------------------
 
 /**
- * Reads all visible layers from the store and renders appropriate legend
- * entries based on their symbology configuration.
- *
- * When no symbology is active (single symbol), the color swatch is clickable
- * to change the layer's base color.
- */
-/**
- * Per-layer legend block with pending color edits and an OK button.
+ * Per-layer legend block with pending color/opacity edits and an OK button.
  */
 function LayerLegendBlock({ name }: { name: string }) {
   const layer = useStore((s) => s.layers[name]);
   const sym = layer?.symbology ?? null;
 
-  // Pending symbology: holds user color edits before they're applied to the map
+  // Pending symbology: holds user color/opacity edits before they're applied to the map
   const [pending, setPending] = useState<SymbologyConfig | null>(null);
   const hasPending = pending !== null;
 

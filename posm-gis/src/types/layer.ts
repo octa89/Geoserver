@@ -25,6 +25,7 @@ export interface LayerConfig {
   filterCombineMode: 'AND' | 'OR';
   popupConfig: PopupConfig | null;
   ageConfig: AgeConfig | null;
+  opacity: number;
 }
 
 export interface FilterDef {

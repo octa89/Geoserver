@@ -9,7 +9,7 @@ import 'leaflet.markercluster';
 import { useStore } from '../store';
 import { getAllLayerRefs, getLayerRefs, setLayerRefs, clearRegistry } from '../store/leafletRegistry';
 import { initLabelMoveListener, computeLabelMinZoom, removeLabels, applyLabels, updateLabelVisibility } from '../lib/labels';
-import { recolorSymbology, resetSymbology, refreshClusterAfterSymbology } from '../lib/symbology';
+import { recolorSymbology, resetSymbology, refreshClusterAfterSymbology, applySymbologyOpacity, hasNonTrivialOpacity } from '../lib/symbology';
 import { enableFlowPulse } from '../lib/sewerFlow';
 import { BASEMAPS, DEFAULT_CENTER, DEFAULT_ZOOM, MAX_ZOOM, MAX_NATIVE_ZOOM } from '../config/constants';
 import { logout, getUserWorkspaces } from '../config/auth';
@@ -229,6 +229,11 @@ export function MapPage({ user }: MapPageProps) {
             // default palette color, but session may have restored a different one)
             resetSymbology(refs.leafletLayer, cfg.geomType, cfg.color, cfg.pointSymbol, refs.geojson);
             refreshClusterAfterSymbology(refs);
+          }
+
+          // Apply saved per-value opacity (from symbology) or layer-level opacity
+          if (hasNonTrivialOpacity(cfg.symbology, cfg.opacity ?? 1)) {
+            applySymbologyOpacity(refs.leafletLayer, cfg.geomType, cfg.symbology, cfg.opacity ?? 1);
           }
 
           // Apply saved labels

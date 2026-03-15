@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../../store';
-import { applyProportional, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { applyProportional, refreshClusterAfterSymbology, applySymbologyOpacity, hasNonTrivialOpacity } from '../../lib/symbology';
 import { getLayerRefs } from '../../store/leafletRegistry';
 
 interface ProportionalPanelProps {
@@ -59,6 +59,9 @@ export function ProportionalPanel({ layerName }: ProportionalPanelProps) {
     );
 
     refreshClusterAfterSymbology(refs);
+    if (hasNonTrivialOpacity(result, layer.opacity)) {
+      applySymbologyOpacity(refs.leafletLayer, layer.geomType, result, layer.opacity);
+    }
     setLayerSymbology(layerName, result);
   };
 

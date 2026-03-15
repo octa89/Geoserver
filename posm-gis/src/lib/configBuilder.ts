@@ -33,6 +33,7 @@ export function buildConfigObject(): {
       filterCombineMode: layer.filterCombineMode,
       popupConfig: layer.popupConfig,
       ageConfig: layer.ageConfig,
+      opacity: layer.opacity,
     };
     layerEntries[name] = perLayer;
   }

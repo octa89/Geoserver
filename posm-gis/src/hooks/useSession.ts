@@ -52,6 +52,7 @@ export function useSession() {
   const setLayerPopupConfig = useStore((s) => s.setLayerPopupConfig);
   const setLayerPointSymbol = useStore((s) => s.setLayerPointSymbol);
   const setLayerAgeConfig = useStore((s) => s.setLayerAgeConfig);
+  const setLayerOpacity = useStore((s) => s.setLayerOpacity);
   const setLayerOrder = useStore((s) => s.setLayerOrder);
   const setSavedSearches = useStore((s) => s.setSavedSearches);
   const setSearchFilterMode = useStore((s) => s.setSearchFilterMode);
@@ -137,6 +138,7 @@ export function useSession() {
         if (saved.popupConfig !== undefined) setLayerPopupConfig(layerName, saved.popupConfig);
         if (saved.pointSymbol) setLayerPointSymbol(layerName, saved.pointSymbol);
         if (saved.ageConfig !== undefined) setLayerAgeConfig(layerName, saved.ageConfig);
+        if (saved.opacity !== undefined) setLayerOpacity(layerName, saved.opacity);
       }
     }
 
@@ -170,6 +172,7 @@ export function useSession() {
     setLayerPopupConfig,
     setLayerPointSymbol,
     setLayerAgeConfig,
+    setLayerOpacity,
     setLayerOrder,
     setSavedSearches,
     setSearchFilterMode,

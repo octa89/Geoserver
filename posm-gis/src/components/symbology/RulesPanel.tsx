@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store';
-import { applyRules, refreshClusterAfterSymbology } from '../../lib/symbology';
+import { applyRules, refreshClusterAfterSymbology, applySymbologyOpacity, hasNonTrivialOpacity } from '../../lib/symbology';
 import { getLayerRefs } from '../../store/leafletRegistry';
 import type { RuleDef } from '../../types/symbology';
 
@@ -71,6 +71,9 @@ export function RulesPanel({ layerName }: RulesPanelProps) {
     );
 
     refreshClusterAfterSymbology(refs);
+    if (hasNonTrivialOpacity(result, layer.opacity)) {
+      applySymbologyOpacity(refs.leafletLayer, layer.geomType, result, layer.opacity);
+    }
     setLayerSymbology(layerName, result);
   };
 
